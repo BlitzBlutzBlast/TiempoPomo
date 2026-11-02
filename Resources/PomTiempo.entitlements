@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  PomTiempo runs in the App Sandbox with no other entitlements. In particular
-  there is no com.apple.security.network.client or .network.server, so macOS
-  itself refuses every outgoing and incoming network connection the app could
-  try to make. scripts/check_no_network.sh fails the build if that changes.
+  PomTiempo runs in the App Sandbox. There is no com.apple.security.network.client
+  or .network.server, so macOS itself refuses every outgoing and incoming network
+  connection the app could try to make. scripts/check_no_network.sh fails the
+  build if that changes.
+
+  The one other entitlement lets the app read an audio file the user picks in
+  the Open panel ("Add Sound…"), and only that file, read-only.
 -->
 <plist version="1.0">
 <dict>
 	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
 </dict>
 </plist>

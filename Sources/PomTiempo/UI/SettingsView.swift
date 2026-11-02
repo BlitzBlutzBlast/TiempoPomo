@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -10,6 +11,7 @@ struct SettingsView: View {
     var showsDone = false
 
     @State private var tab: Tab = .sounds
+    @State private var importProblems: [String] = []
 
     enum Tab: String, CaseIterable, Identifiable {
         case sounds = "Sounds"
@@ -62,14 +64,17 @@ struct SettingsView: View {
                     Text("Volume")
                     Image(systemName: "speaker.fill").foregroundStyle(.secondary)
                     Slider(value: $settings.volume, in: 0...1) { editing in
-                        if !editing { Sound.play(settings.focusEndSound, volume: settings.volume) }
+                        if !editing {
+                            Sound.stopAll()
+                            Sound.play(settings.focusEndSound, volume: settings.volume)
+                        }
                     }
                     Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
                     Text("\(Int(settings.volume * 100))%")
                         .monospacedDigit()
                         .frame(width: 38, alignment: .trailing)
                 }
-                Stepper(value: $settings.chimeRepeats, in: 1...3) {
+                Stepper(value: $settings.chimeRepeats, in: 1...5) {
                     HStack {
                         Text("Ring each chime")
                         Spacer()
@@ -77,6 +82,9 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            } footer: {
+                Text("Pressing Start, Pause, Skip or Reset silences a chime that's still repeating.")
+                    .foregroundStyle(.secondary)
             }
 
             Section("Chimes") {
@@ -89,24 +97,87 @@ struct SettingsView: View {
                 }
             }
             .disabled(!settings.soundsEnabled)
+
+            Section {
+                if settings.customSounds.isEmpty {
+                    Text("Add short audio files (MP3, M4A, WAV, AIFF, CAF; up to 30 seconds) to use them as chimes.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(settings.customSounds, id: \.self) { key in
+                    HStack {
+                        Image(systemName: "waveform")
+                            .foregroundStyle(.secondary)
+                        Text(Sound.displayName(key))
+                        Spacer()
+                        Button {
+                            Sound.stopAll()
+                            Sound.play(key, volume: settings.volume)
+                        } label: { Image(systemName: "play.circle") }
+                            .buttonStyle(.borderless)
+                            .help("Preview")
+                        Button(role: .destructive) {
+                            settings.deleteCustomSound(key)
+                        } label: { Image(systemName: "trash") }
+                            .buttonStyle(.borderless)
+                            .help("Remove")
+                    }
+                }
+                Button("Add Sound…") { addSounds() }
+            } header: {
+                Text("Your sounds")
+            } footer: {
+                Text("PomTiempo keeps its own copy of each file and can only open the files you choose here.")
+                    .foregroundStyle(.secondary)
+            }
         }
+        .alert("Some sounds weren't added", isPresented: Binding(
+            get: { !importProblems.isEmpty },
+            set: { if !$0 { importProblems = [] } }
+        )) {
+            Button("OK") { importProblems = [] }
+        } message: {
+            Text(importProblems.joined(separator: "\n"))
+        }
+    }
+
+    private func addSounds() {
+        let panel = NSOpenPanel()
+        panel.title = "Add Sounds"
+        panel.prompt = "Add"
+        panel.allowedContentTypes = Sound.importTypes
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK else { return }
+        importProblems = settings.importSounds(from: panel.urls)
     }
 
     private func soundPicker(_ title: String, selection: Binding<String>) -> some View {
         HStack {
             Picker(title, selection: selection) {
-                ForEach(Sound.names, id: \.self) { Text($0).tag($0) }
+                Section("PomTiempo") {
+                    ForEach(Sound.appKeys, id: \.self) { Text(Sound.displayName($0)).tag($0) }
+                }
+                if !settings.customSounds.isEmpty {
+                    Section("Your sounds") {
+                        ForEach(settings.customSounds, id: \.self) { Text(Sound.displayName($0)).tag($0) }
+                    }
+                }
+                Section("macOS") {
+                    ForEach(Sound.systemKeys, id: \.self) { Text(Sound.displayName($0)).tag($0) }
+                }
             }
-            .onChange(of: selection.wrappedValue) { _, name in
-                Sound.play(name, volume: settings.volume)
+            .onChange(of: selection.wrappedValue) { _, key in
+                Sound.stopAll()
+                Sound.play(key, volume: settings.volume)
             }
             Button {
-                Sound.play(selection.wrappedValue, volume: settings.volume)
+                Sound.stopAll()
+                Sound.play(selection.wrappedValue, volume: settings.volume, times: settings.chimeRepeats)
             } label: {
                 Image(systemName: "play.circle")
             }
             .buttonStyle(.borderless)
-            .help("Preview")
+            .help("Preview, with repeats")
         }
     }
 

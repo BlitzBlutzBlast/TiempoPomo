@@ -104,11 +104,12 @@ final class TimerEngine: ObservableObject {
     }
 
     func start() {
+        Sound.stopAll()
         if isIdle {
             phase = .focus
             round = 1
             setDuration()
-            if settings.playStartSound { settings.chime(settings.startSound) }
+            if settings.playStartSound { settings.chime(settings.startSound, once: true) }
         }
         resume()
     }
@@ -118,6 +119,7 @@ final class TimerEngine: ObservableObject {
     }
 
     func pause() {
+        Sound.stopAll()
         guard isRunning, let endDate else { return }
         remaining = max(0, endDate.timeIntervalSinceNow)
         stopTicking()
@@ -125,6 +127,7 @@ final class TimerEngine: ObservableObject {
     }
 
     func reset() {
+        Sound.stopAll()
         stopTicking()
         notifier.cancelPending()
         resetToStart()
@@ -133,6 +136,7 @@ final class TimerEngine: ObservableObject {
     /// Ends the current phase now. Skipping is quiet and a skipped focus
     /// round doesn't count toward today's totals.
     func skip() {
+        Sound.stopAll()
         guard !isIdle else { return }
         advance(natural: false)
     }
