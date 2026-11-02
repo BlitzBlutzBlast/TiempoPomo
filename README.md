@@ -8,7 +8,20 @@ A calm, glassy Pomodoro timer for macOS. One centred dial, your own session pres
 
 ## Download
 
-Grab the latest **PomTiempo-x.y.z.dmg** from [Releases](../../releases/latest), drag the app to Applications, then **right-click → Open** the first time (it's ad-hoc signed, not notarized).
+From [Releases](../../releases/latest), pick one:
+
+- **PomTiempo-x.y.z.pkg**: double-click and it installs into Applications. The first time, approve it in System Settings → Privacy & Security → *Open Anyway*.
+- **PomTiempo-x.y.z.dmg**: drag the app to Applications, then **right-click → Open** the first time.
+
+The app is ad-hoc signed, not notarized, so macOS asks once.
+
+## Privacy: no internet, enforced
+
+PomTiempo never goes online. That's enforced, not just promised:
+
+- It runs in the **App Sandbox with no network entitlement** ([`Resources/PomTiempo.entitlements`](Resources/PomTiempo.entitlements)), so macOS refuses any connection it tries to make.
+- [`scripts/check_no_network.sh`](scripts/check_no_network.sh) runs on every build. It fails the build if the source uses a networking API, if the binary imports networking symbols or frameworks, or if the signed app isn't sandboxed or holds a network entitlement.
+- No dependencies, no updater, no analytics, no account. Presets and settings live in the app's sandbox container on your Mac.
 
 ## What's in it
 
@@ -32,7 +45,7 @@ Grab the latest **PomTiempo-x.y.z.dmg** from [Releases](../../releases/latest), 
 ## Build it yourself
 
 ```bash
-./build.sh 0.1.0          # → dist/PomTiempo.app and dist/PomTiempo-0.1.0.dmg
+./build.sh 0.1.0          # → dist/PomTiempo.app, PomTiempo-0.1.0.dmg and PomTiempo-0.1.0.pkg
 ```
 
 Swift package, no Xcode project and no dependencies. Needs macOS 14+ and the Swift toolchain (Xcode or the Command Line Tools). Pushing a `v*` tag makes GitHub Actions build a universal DMG and attach it to a release.

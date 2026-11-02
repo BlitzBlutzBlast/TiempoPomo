@@ -1,39 +1,52 @@
 name: Release
 
-# Push a tag like v0.1.0 to build the DMG and attach it to a GitHub Release.
-# Running it by hand (Actions → Release → Run workflow) builds the DMG as a
-# downloadable workflow artifact without making a release.
+# Push a tag like v0.1.0 to build the DMG and PKG and attach them to a GitHub
+# Release. Running it by hand (Actions → Release → Run workflow) builds them
+# as a downloadable workflow artifact without making a release.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: write
+# Nothing by default; the job below asks only for what it needs.
+permissions: {}
 
 jobs:
   build:
     runs-on: macos-15
+    permissions:
+      contents: write   # to create the release and upload the files
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned to commit SHAs so a moved tag can't change what runs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - name: Build app and DMG (Apple silicon + Intel)
+      # build.sh runs scripts/check_no_network.sh before compiling and again on
+      # the signed app, so a build that could reach the network never ships.
+      - name: Build app, DMG and PKG (Apple silicon + Intel)
         run: |
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0-dev"; fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           UNIVERSAL=1 BUILD_NUMBER="$GITHUB_RUN_NUMBER" ./build.sh "$VERSION"
+          shasum -a 256 dist/*.dmg dist/*.pkg | sed 's|dist/||' > dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: PomTiempo-${{ env.VERSION }}
-          path: dist/*.dmg
+          path: |
+            dist/*.dmg
+            dist/*.pkg
+            dist/SHA256SUMS.txt
 
       - name: Publish release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg \
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.pkg dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
             --title "PomTiempo $VERSION" \
             --notes-file .github/release-notes.md \
-          || gh release upload "$GITHUB_REF_NAME" dist/*.dmg --clobber
+          || gh release upload "$GITHUB_REF_NAME" dist/*.dmg dist/*.pkg dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber

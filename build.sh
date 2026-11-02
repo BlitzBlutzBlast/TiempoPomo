@@ -29,6 +29,8 @@ if ! xcode-select -p | grep -q "Xcode" && [[ -z "${SDKROOT:-}" ]]; then
   done
 fi
 
+scripts/check_no_network.sh
+
 echo "==> Compiling $APP_NAME $VERSION ($BUILD)"
 swift build "${ARGS[@]}"
 BIN_DIR="$(swift build "${ARGS[@]}" --show-bin-path)"
@@ -41,8 +43,9 @@ sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist >
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-echo "==> Signing (ad-hoc)"
-codesign --force --deep --options runtime --sign - "$APP"
+echo "==> Signing (ad-hoc, sandboxed, no network)"
+codesign --force --options runtime --entitlements Resources/PomTiempo.entitlements --sign - "$APP"
+scripts/check_no_network.sh "$APP"
 
 echo "==> Packaging DMG"
 STAGE="$(mktemp -d)"
@@ -52,4 +55,20 @@ DMG="$DIST/$APP_NAME-$VERSION.dmg"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 
+# A double-click installer that puts the app straight into /Applications.
+echo "==> Packaging installer"
+PKGROOT="$(mktemp -d)"
+cp -R "$APP" "$PKGROOT/"
+COMPONENTS="$(mktemp -d)/components.plist"
+pkgbuild --analyze --root "$PKGROOT" "$COMPONENTS" >/dev/null
+# Always install to /Applications, never into a copy found elsewhere on disk.
+plutil -replace 0.BundleIsRelocatable -bool NO "$COMPONENTS"
+PKG="$DIST/$APP_NAME-$VERSION.pkg"
+pkgbuild --root "$PKGROOT" --component-plist "$COMPONENTS" \
+  --install-location /Applications \
+  --identifier com.blitzblutzblast.pomtiempo.pkg --version "$VERSION" \
+  "$PKG" >/dev/null
+rm -rf "$PKGROOT"
+
 echo "==> Done: $DMG"
+echo "==> Done: $PKG"
