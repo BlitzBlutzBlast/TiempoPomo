@@ -9,6 +9,12 @@ struct MainView: View {
     @State private var sheet: Sheet?
     @State private var showAdjust = false
 
+    /// Both side cards are exactly this size.
+    static let sideCard = CGSize(width: 168, height: 214)
+    static let sideGap: CGFloat = 30
+    /// Card + gap + dial + gap + card: the width everything else lines up to.
+    static let rowWidth = sideCard.width * 2 + sideGap * 2 + TimerDial.size
+
     enum Sheet: String, Identifiable {
         case presets, colors, settings
         var id: String { rawValue }
@@ -26,58 +32,84 @@ struct MainView: View {
                 .frame(height: 28)
                 .padding(.top, 2)
 
-            Spacer(minLength: 16)
+            Spacer(minLength: 12)
 
-            HStack(alignment: .center, spacing: 26) {
+            // The two cards share one size and one gap, so the dial sits
+            // exactly in the middle, and they centre on the dial itself, not
+            // on the dial plus the buttons under it.
+            HStack(alignment: .center, spacing: Self.sideGap) {
                 TodayCard(theme: theme, accent: accent)
-                    .frame(width: 160)
+                    .frame(width: Self.sideCard.width, height: Self.sideCard.height)
 
-                VStack(spacing: 20) {
-                    TimerDial(
-                        theme: theme, accent: accent,
-                        fractionLeft: engine.fractionLeft,
-                        time: Format.clock(engine.remaining),
-                        phase: engine.phase,
-                        roundText: engine.roundText,
-                        rounds: engine.plan.rounds, round: engine.round,
-                        repeats: engine.plan.repeatForever
-                    )
-                    controls(theme: theme, accent: accent)
-                    Button {
-                        showAdjust = true
-                    } label: {
-                        Label("Change session time", systemImage: "slider.horizontal.below.rectangle")
-                    }
-                    .buttonStyle(FooterButtonStyle(theme: theme))
-                    .disabled(!engine.isIdle)
-                    .opacity(engine.isIdle ? 1 : 0.35)
-                    .popover(isPresented: $showAdjust, arrowEdge: .bottom) {
-                        AdjustSessionView()
-                    }
-                }
+                TimerDial(
+                    theme: theme, accent: accent,
+                    fractionLeft: engine.fractionLeft,
+                    time: Format.clock(engine.remaining),
+                    phase: engine.phase,
+                    roundText: engine.roundText,
+                    rounds: engine.plan.rounds, round: engine.round,
+                    repeats: engine.plan.repeatForever
+                )
+                .anchorPreference(key: DialBoundsKey.self, value: .bounds) { $0 }
 
                 SessionCard(theme: theme, accent: accent)
-                    .frame(width: 160)
+                    .frame(width: Self.sideCard.width, height: Self.sideCard.height)
             }
-            .padding(.horizontal, 28)
 
-            Spacer(minLength: 16)
+            VStack(spacing: 14) {
+                controls(theme: theme, accent: accent)
+                Button {
+                    showAdjust = true
+                } label: {
+                    Label("Change session time", systemImage: "slider.horizontal.below.rectangle")
+                }
+                .buttonStyle(FooterButtonStyle(theme: theme))
+                .disabled(!engine.isIdle)
+                .opacity(engine.isIdle ? 1 : 0.35)
+                .popover(isPresented: $showAdjust, arrowEdge: .bottom) {
+                    AdjustSessionView()
+                }
+            }
+            .padding(.top, 22)
 
-            HStack {
+            Spacer(minLength: 12)
+
+            // Three equal columns: the middle button is centred on the window
+            // whatever the outer two measure.
+            HStack(spacing: 0) {
                 Button { sheet = .presets } label: { Label("Update Defaults", systemImage: "square.stack.3d.up") }
-                Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Button { sheet = .colors } label: { Label("App Colors", systemImage: "paintpalette") }
-                Spacer()
+                    .frame(maxWidth: .infinity, alignment: .center)
                 Button { sheet = .settings } label: { Label("Settings", systemImage: "gearshape") }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .buttonStyle(FooterButtonStyle(theme: theme))
-            .padding(.horizontal, 22)
+            // Same width as the card row, widened by the buttons' own hover
+            // padding, so "Update Defaults" starts where the Today card starts
+            // and "Settings" ends where the Session card ends.
+            .frame(width: Self.rowWidth + FooterButtonStyle.horizontalPadding * 2)
             .padding(.bottom, 16)
         }
         .ignoresSafeArea(edges: .top)
         .padding(.top, 6)
         .frame(minWidth: 680, minHeight: 540)
-        .background(GlassBackground(theme: theme, glow: accent))
+        // The glow sits behind the dial wherever the layout puts it.
+        .backgroundPreferenceValue(DialBoundsKey.self) { anchor in
+            GeometryReader { proxy in
+                if let anchor {
+                    let rect = proxy[anchor]
+                    RadialGradient(
+                        colors: [accent.opacity(theme.isDark ? 0.24 : 0.14), accent.opacity(0)],
+                        center: UnitPoint(x: rect.midX / max(proxy.size.width, 1),
+                                          y: rect.midY / max(proxy.size.height, 1)),
+                        startRadius: 20, endRadius: 340
+                    )
+                    .animation(.easeInOut(duration: 0.8), value: accent)
+                }
+            }
+        }
+        .background(GlassBackground(theme: theme))
         .background(WindowConfigurator(theme: theme, floats: settings.floatOnTop))
         .preferredColorScheme(theme.colorScheme)
         .tint(accent)
@@ -191,17 +223,19 @@ private struct SessionCard: View {
                         .foregroundStyle(theme.text)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    if engine.isIdle {
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(theme.secondary)
-                    }
+                    // Always laid out, only hidden while running, so the name
+                    // wraps the same way and the card doesn't shift.
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(theme.secondary)
+                        .opacity(engine.isIdle ? 1 : 0)
                 }
                 .contentShape(Rectangle())
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
+            .focusEffectDisabled()
             .fixedSize(horizontal: false, vertical: true)
             .disabled(!engine.isIdle)
 
@@ -228,5 +262,12 @@ private struct SessionCard: View {
             .font(.system(size: 11.5, design: .rounded))
             .foregroundStyle(theme.secondary)
         }
+    }
+}
+
+private struct DialBoundsKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
     }
 }

@@ -12,6 +12,7 @@ struct TimerDial: View {
     let round: Int
     let repeats: Bool
 
+    static let size: CGFloat = 260
     private let lineWidth: CGFloat = 11
 
     var body: some View {
@@ -46,7 +47,7 @@ struct TimerDial: View {
                     .foregroundStyle(theme.secondary)
             }
         }
-        .frame(width: 260, height: 260)
+        .frame(width: Self.size, height: Self.size)
     }
 }
 
@@ -88,9 +89,11 @@ struct Card<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
+        // Content starts at the top-left and the card fills whatever size it
+        // is given, so cards side by side line up edge to edge.
         VStack(alignment: .leading, spacing: 8) { content }
             .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(theme.surface)
@@ -148,6 +151,7 @@ struct CircleIconButtonStyle: ButtonStyle {
 
 /// The quiet text buttons along the bottom of the window.
 struct FooterButtonStyle: ButtonStyle {
+    static let horizontalPadding: CGFloat = 12
     let theme: AppTheme
     @State private var hovering = false
 
@@ -155,7 +159,7 @@ struct FooterButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 12.5, weight: .medium, design: .rounded))
             .foregroundStyle(theme.text.opacity(hovering ? 1 : 0.72))
-            .padding(.horizontal, 12)
+            .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, 7)
             .background(Capsule().fill(hovering || configuration.isPressed ? theme.surface : .clear))
             .onHover { hovering = $0 }
