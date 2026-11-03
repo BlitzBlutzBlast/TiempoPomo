@@ -43,10 +43,13 @@ private struct ThemeSwatch: View {
         VStack(spacing: 10) {
             ZStack {
                 Circle().inset(by: 3).stroke(theme.text.opacity(0.1), lineWidth: 5)
-                WavyArc(sweep: 0.68, amplitude: 2, phase: 0, radius: 29, waves: 12)
+                Circle()
+                    .inset(by: 3)
+                    .trim(from: 0, to: 0.68)
                     .stroke(AngularGradient(colors: theme.ringColors(for: .focus), center: .center,
-                                            startAngle: .degrees(-90), endAngle: .degrees(theme.isGradient ? 270 : -90 + 245)),
+                                            startAngle: .degrees(0), endAngle: .degrees(theme.isGradient ? 360 : 245)),
                             style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
                 Circle()
                     .inset(by: 3)
                     .trim(from: 0.74, to: 0.94)

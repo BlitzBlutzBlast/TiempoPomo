@@ -1,18 +1,18 @@
 import SwiftUI
 
-/// The countdown shown in the menu bar.
+/// The countdown shown in the menu bar. It watches only `MenuBarClock`,
+/// which changes once a minute by default.
 struct MenuBarLabel: View {
-    @EnvironmentObject private var engine: TimerEngine
+    @ObservedObject var clock: MenuBarClock
 
     var body: some View {
-        if engine.isIdle {
-            Image(systemName: "timer")
-        } else {
+        if let text = clock.text {
             HStack(spacing: 4) {
-                Image(systemName: engine.isRunning ? engine.phase.symbol : "pause.circle")
-                Text(Format.clock(engine.remaining))
-                    .monospacedDigit()
+                Image(systemName: clock.symbol)
+                Text(text).monospacedDigit()
             }
+        } else {
+            Image(systemName: clock.symbol)
         }
     }
 }

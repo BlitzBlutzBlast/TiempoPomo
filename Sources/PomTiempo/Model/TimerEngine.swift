@@ -27,6 +27,27 @@ enum Phase: String {
     }
 }
 
+/// The part of the timer that changes every second, kept apart from
+/// `TimerEngine` so a tick redraws only the views that show the time (the
+/// digits and the ring), not the whole window, the menus and the cards.
+@MainActor
+final class Countdown: ObservableObject {
+    /// Whole seconds left, as shown.
+    @Published fileprivate(set) var seconds = 0
+    /// Fraction of the phase still to go, 1 → 0.
+    @Published fileprivate(set) var fraction: Double = 1
+}
+
+/// What the menu bar item shows. It only publishes when its text actually
+/// changes, which with the default minutes display is once a minute: the
+/// menu bar item is one of the costliest things the app redraws.
+@MainActor
+final class MenuBarClock: ObservableObject {
+    /// nil shows the icon alone.
+    @Published fileprivate(set) var text: String?
+    @Published fileprivate(set) var symbol = "timer"
+}
+
 /// Runs a session: counts down each focus round and break, chimes and
 /// notifies at each change, and keeps today's totals.
 @MainActor
@@ -34,7 +55,8 @@ final class TimerEngine: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var round = 1
     @Published private(set) var isRunning = false
-    @Published private(set) var remaining: TimeInterval = 0
+    /// The current phase has been started, so the main button says Resume.
+    @Published private(set) var phaseStarted = false
     @Published private(set) var phaseDuration: TimeInterval = 1
     /// The session being run: a saved preset, or one changed for this run only.
     @Published private(set) var plan: SessionPreset
@@ -42,8 +64,18 @@ final class TimerEngine: ObservableObject {
     @Published private(set) var todayFocusMinutes = 0
     @Published private(set) var todayRounds = 0
 
+    let countdown = Countdown()
+    let menuClock = MenuBarClock()
+
+    /// Time left in the phase. Not published: it feeds `countdown` and
+    /// `menuClock`, which publish only when what they show changes.
+    private var remaining: TimeInterval = 0 {
+        didSet { publishTime() }
+    }
+
     private let settings: AppSettings
     private let notifier: Notifier
+    private var styleWatch: AnyCancellable?
     /// The countdown is measured against a deadline, not by counting ticks,
     /// so it stays right when the Mac is busy or the timer fires late.
     private var endDate: Date?
@@ -56,6 +88,9 @@ final class TimerEngine: ObservableObject {
         self.plan = preset
         loadStats()
         resetToStart()
+        styleWatch = settings.$menuBarStyle.dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.publishTime() }
+        }
     }
 
     /// Nothing is under way, so the session can be swapped or changed.
@@ -69,11 +104,25 @@ final class TimerEngine: ObservableObject {
         return phaseDuration > 0 ? min(1, max(0, remaining / phaseDuration)) : 1
     }
 
-    /// `fractionLeft` worked out for an exact moment from the deadline, so a
-    /// view redrawn every frame can drain smoothly between ticks.
-    func fractionLeft(at date: Date) -> Double {
-        guard isRunning, let endDate, phaseDuration > 0 else { return fractionLeft }
-        return min(1, max(0, endDate.timeIntervalSince(date) / phaseDuration))
+    private func publishTime() {
+        let seconds = max(0, Int(remaining.rounded(.up)))
+        if countdown.seconds != seconds { countdown.seconds = seconds }
+        let fraction = fractionLeft
+        if countdown.fraction != fraction { countdown.fraction = fraction }
+
+        let text: String?
+        if isIdle {
+            text = nil
+        } else {
+            switch settings.menuBarStyle {
+            case .seconds: text = Format.clock(remaining)
+            case .minutes: text = "\(max(1, Int((remaining / 60).rounded(.up))))m"
+            case .icon: text = nil
+            }
+        }
+        if menuClock.text != text { menuClock.text = text }
+        let symbol = isIdle ? "timer" : (isRunning ? phase.symbol : "pause.circle")
+        if menuClock.symbol != symbol { menuClock.symbol = symbol }
     }
 
     var roundText: String {
@@ -153,6 +202,7 @@ final class TimerEngine: ObservableObject {
     private func resetToStart() {
         phase = .idle
         round = 1
+        phaseStarted = false
         phaseDuration = duration(for: .focus)
         remaining = phaseDuration
     }
@@ -167,6 +217,7 @@ final class TimerEngine: ObservableObject {
     }
 
     private func setDuration() {
+        phaseStarted = false
         phaseDuration = max(1, duration(for: phase))
         remaining = phaseDuration
     }
@@ -185,22 +236,35 @@ final class TimerEngine: ObservableObject {
         let end = Date().addingTimeInterval(remaining)
         endDate = end
         isRunning = true
+        phaseStarted = true
+        publishTime()
         startTicking()
         scheduleNotification(at: end)
     }
 
     private func startTicking() {
-        ticker?.invalidate()
-        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        ticker = timer
-        // Keeps App Nap from slowing the timer while the window is hidden.
+        scheduleTick()
+        // Keeps App Nap from delaying the chime while the window is hidden.
         if activity == nil {
             activity = ProcessInfo.processInfo.beginActivity(
                 options: .userInitiatedAllowingIdleSystemSleep, reason: "PomTiempo timer running")
         }
+    }
+
+    /// Wakes once, exactly when the displayed second next changes (or when
+    /// the phase ends), instead of polling: one wake-up a second, with a
+    /// little tolerance so macOS can line it up with other work.
+    private func scheduleTick() {
+        ticker?.invalidate()
+        guard let endDate else { return }
+        let shown = endDate.timeIntervalSinceNow.rounded(.up)
+        let next = shown > 1 ? endDate.addingTimeInterval(-(shown - 1)) : endDate
+        let timer = Timer(fire: next, interval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        timer.tolerance = 0.03
+        RunLoop.main.add(timer, forMode: .common)
+        ticker = timer
     }
 
     private func stopTicking() {
@@ -212,20 +276,18 @@ final class TimerEngine: ObservableObject {
             ProcessInfo.processInfo.endActivity(activity)
             self.activity = nil
         }
+        publishTime()
     }
 
     private func tick() {
         guard let endDate else { return }
         let left = endDate.timeIntervalSinceNow
-        if left <= 0 {
+        if left <= 0.001 {
             remaining = 0
             advance(natural: true)
-        } else if left.rounded(.up) != remaining.rounded(.up) {
-            // Publish only when the displayed second changes: every publish
-            // redraws the window and the menu bar item, and four a second
-            // costs real battery for nothing anyone can see. The ring reads
-            // `fractionLeft(at:)` itself to drain smoothly in between.
+        } else {
             remaining = left
+            scheduleTick()
         }
     }
 

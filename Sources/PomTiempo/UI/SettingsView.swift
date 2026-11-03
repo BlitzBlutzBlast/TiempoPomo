@@ -261,6 +261,10 @@ struct SettingsView: View {
             }
             Section("Window") {
                 Toggle("Show countdown in the menu bar", isOn: $settings.showMenuBarTimer)
+                Picker("Menu bar shows", selection: $settings.menuBarStyle) {
+                    ForEach(AppSettings.MenuBarStyle.allCases) { Text($0.label).tag($0) }
+                }
+                .disabled(!settings.showMenuBarTimer)
                 Toggle("Keep window on top of other apps", isOn: $settings.floatOnTop)
             }
             Section {

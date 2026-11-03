@@ -46,11 +46,9 @@ struct MainView: View {
                     .frame(width: Self.sideCard.width, height: Self.sideCard.height)
 
                 TimerDial(
+                    countdown: engine.countdown,
                     theme: theme, accent: accent,
                     ringColors: theme.ringColors(for: engine.displayPhase),
-                    fractionLeft: engine.fractionLeft(at:),
-                    isRunning: engine.isRunning,
-                    time: Format.clock(engine.remaining),
                     phase: engine.phase,
                     roundText: engine.roundText,
                     rounds: engine.plan.rounds, round: engine.round,
@@ -169,7 +167,7 @@ struct MainView: View {
         default:
             if engine.isRunning { return "PAUSE" }
             // Paused by hand, or waiting because auto-start is off.
-            return engine.remaining < engine.phaseDuration ? "RESUME" : "START \(engine.phase.label.uppercased())"
+            return engine.phaseStarted ? "RESUME" : "START \(engine.phase.label.uppercased())"
         }
     }
 }

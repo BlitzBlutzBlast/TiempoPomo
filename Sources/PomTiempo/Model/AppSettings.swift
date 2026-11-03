@@ -25,6 +25,7 @@ final class AppSettings: ObservableObject {
         static let autoStartFocus = "autoStartFocus"
         static let showMenuBarTimer = "showMenuBarTimer"
         static let floatOnTop = "floatOnTop"
+        static let menuBarStyle = "menuBarStyle"
         static let themeID = "themeID"
     }
 
@@ -94,6 +95,22 @@ final class AppSettings: ObservableObject {
     @Published var autoStartFocus: Bool = load(Key.autoStartFocus, true) { didSet { store(autoStartFocus, Key.autoStartFocus) } }
     @Published var showMenuBarTimer: Bool = load(Key.showMenuBarTimer, true) { didSet { store(showMenuBarTimer, Key.showMenuBarTimer) } }
     @Published var floatOnTop: Bool = load(Key.floatOnTop, false) { didSet { store(floatOnTop, Key.floatOnTop) } }
+    /// Minutes by default: the menu bar item then redraws once a minute, not every second.
+    @Published var menuBarStyle: MenuBarStyle = MenuBarStyle(rawValue: load(Key.menuBarStyle, MenuBarStyle.minutes.rawValue)) ?? .minutes {
+        didSet { store(menuBarStyle.rawValue, Key.menuBarStyle) }
+    }
+
+    enum MenuBarStyle: String, CaseIterable, Identifiable {
+        case minutes, seconds, icon
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .minutes: return "Minutes left (25m)"
+            case .seconds: return "Minutes and seconds (24:59)"
+            case .icon: return "Icon only"
+            }
+        }
+    }
 
     // MARK: Colors
 

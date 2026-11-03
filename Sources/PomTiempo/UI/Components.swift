@@ -1,17 +1,14 @@
 import SwiftUI
 
-/// The countdown ring. It starts full and drains as the phase runs down.
-/// While the timer runs, the ring ripples into a wave that flows around it;
-/// when it stops, the wave settles back into a smooth line.
+/// The countdown ring and time. It watches only `Countdown`, so each second
+/// redraws this view alone. The ring is a plain arc that steps once a second:
+/// on a 25-minute round each step is a fraction of a degree, so it reads as
+/// a smooth drain without any animation.
 struct TimerDial: View {
+    @ObservedObject var countdown: Countdown
     let theme: AppTheme
     let accent: Color
     let ringColors: [Color]
-    /// Fraction of the phase left at a given moment, read every frame so the
-    /// ring drains continuously rather than in steps.
-    let fractionLeft: (Date) -> Double
-    let isRunning: Bool
-    let time: String
     let phase: Phase
     let roundText: String
     let rounds: Int
@@ -20,26 +17,21 @@ struct TimerDial: View {
 
     static let size: CGFloat = 260
     private let lineWidth: CGFloat = 10
-    private let waveHeight: CGFloat = 4.5
+    /// Space between the ring and the dial's edge, so the glow isn't clipped.
+    private let inset: CGFloat = 10
 
     var body: some View {
         ZStack {
-            WaveRing(fractionLeft: fractionLeft, isRunning: isRunning,
-                     colors: ringColors,
-                     glowColor: (ringColors.dropFirst().first ?? accent).opacity(0.5),
-                     trackColor: theme.text.opacity(theme.isDark ? 0.12 : 0.10),
-                     lineWidth: lineWidth, waveHeight: waveHeight, settleTime: Self.settleTime)
-
+            ring
             VStack(spacing: 8) {
                 Label(phase.label.uppercased(), systemImage: phase.symbol)
                     .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
                     .tracking(1.6)
                     .foregroundStyle(accent)
-                Text(time)
+                Text(Format.clock(TimeInterval(countdown.seconds)))
                     .font(.system(size: 58, weight: .light, design: theme.fontDesign))
                     .monospacedDigit()
                     .foregroundStyle(theme.text)
-                    .contentTransition(.numericText(countsDown: true))
                 RoundDots(theme: theme, accent: accent, total: rounds, current: round,
                           repeats: repeats, done: phase == .complete)
                 Text(roundText)
@@ -50,52 +42,33 @@ struct TimerDial: View {
         .frame(width: Self.size, height: Self.size)
     }
 
-    /// How long the wave takes to swell or settle when the timer starts or stops.
-    static let settleTime: TimeInterval = 0.7
-}
-
-/// An arc from 12 o'clock, clockwise, whose radius ripples as a sine wave.
-/// The wave is fixed to the angle around the circle, not to the arc, so it
-/// keeps its shape as the arc shortens; `phase` slides it along. Only the
-/// wave height animates, so it can swell and settle smoothly.
-struct WavyArc: Shape {
-    var sweep: Double
-    var amplitude: CGFloat
-    var phase: Double
-    var radius: CGFloat
-    /// Number of crests around the full circle.
-    var waves: Double = 14
-
-    var animatableData: CGFloat {
-        get { amplitude }
-        set { amplitude = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        Self.path(sweep: sweep, amplitude: amplitude, phase: phase, radius: radius,
-                  center: CGPoint(x: rect.midX, y: rect.midY), waves: waves)
-    }
-
-    /// `startFraction` starts the arc further round than 12 o'clock.
-    static func path(sweep: Double, amplitude: CGFloat, phase: Double, radius: CGFloat,
-                     center: CGPoint, waves: Double = 14, startFraction: Double = 0) -> Path {
-        var path = Path()
-        guard sweep > 0.0005 else { return path }
-        let total = min(sweep, 1) * 2 * .pi
-        let start = startFraction * 2 * .pi
-        let steps = max(12, Int(total / (2 * .pi) * 240))
-        // The wave eases in and out over the arc's ends so the caps sit on the line.
-        let taper = 0.3
-        for i in 0...steps {
-            let t = Double(i) / Double(steps) * total
-            let k = min(1, min(t, total - t) / taper)
-            let ease = k * k * (3 - 2 * k)
-            let angle = -Double.pi / 2 + start + t
-            let r = Double(radius) + Double(amplitude) * ease * sin(waves * angle - phase)
-            let point = CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
-            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+    private var ring: some View {
+        let left = countdown.fraction
+        let radius = Self.size / 2 - inset - lineWidth / 2
+        // Gap between the arc's end and the track, allowing for both round caps.
+        let gap = Double((lineWidth + 8) / (2 * .pi * radius))
+        let gradient = ringColors.count > 2
+            ? AngularGradient(colors: ringColors, center: .center)
+            : AngularGradient(colors: ringColors, center: .center,
+                              startAngle: .degrees(0), endAngle: .degrees(360 * max(left, 0.01)))
+        return ZStack {
+            if left < 1 - gap * 2 {
+                Circle()
+                    .inset(by: inset + lineWidth / 2)
+                    .trim(from: left + gap, to: 1 - gap)
+                    .stroke(theme.text.opacity(theme.isDark ? 0.12 : 0.10),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round))
+            }
+            Circle()
+                .inset(by: inset + lineWidth / 2)
+                .trim(from: 0, to: left)
+                .stroke(gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .shadow(color: (ringColors.dropFirst().first ?? accent).opacity(0.5), radius: 8)
         }
-        return path
+        .rotationEffect(.degrees(-90))
+        // Draw on the GPU: CoreGraphics would otherwise work out the
+        // gradient pixel by pixel on the CPU every second.
+        .drawingGroup()
     }
 }
 

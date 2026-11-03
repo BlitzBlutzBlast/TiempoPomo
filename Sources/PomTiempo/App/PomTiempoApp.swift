@@ -62,8 +62,7 @@ struct PomTiempoApp: App {
                 .environmentObject(engine)
                 .environmentObject(store)
         } label: {
-            MenuBarLabel()
-                .environmentObject(engine)
+            MenuBarLabel(clock: engine.menuClock)
         }
     }
 }
