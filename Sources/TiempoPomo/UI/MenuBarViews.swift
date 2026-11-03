@@ -78,7 +78,7 @@ struct MenuBarPanel: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 2) {
-                    panelLink("Open PomTiempo", "macwindow") {
+                    panelLink("Open Tiempo Pomo", "macwindow") {
                         openWindow(id: "main")
                         NSApp.activate(ignoringOtherApps: true)
                     }
@@ -91,7 +91,7 @@ struct MenuBarPanel: View {
                         openSettings()
                         NSApp.activate(ignoringOtherApps: true)
                     }
-                    panelLink("Quit PomTiempo", "power") { NSApp.terminate(nil) }
+                    panelLink("Quit Tiempo Pomo", "power") { NSApp.terminate(nil) }
                 }
                 .font(.system(size: 13, design: theme.fontDesign))
                 .foregroundStyle(theme.text)

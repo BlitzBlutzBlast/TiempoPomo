@@ -94,7 +94,7 @@ struct MainView: View {
     // MARK: Header and footer
 
     private func header(theme: AppTheme) -> some View {
-        Text("PomTiempo")
+        Text("Tiempo Pomo")
             .font(.system(size: 15, weight: .semibold, design: theme.fontDesign))
             .foregroundStyle(theme.text.opacity(0.85))
             .frame(maxWidth: .infinity)

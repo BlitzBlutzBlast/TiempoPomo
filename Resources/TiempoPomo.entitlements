@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  PomTiempo runs in the App Sandbox. There is no com.apple.security.network.client
+  Tiempo Pomo runs in the App Sandbox. There is no com.apple.security.network.client
   or .network.server, so macOS itself refuses every outgoing and incoming network
   connection the app could try to make. scripts/check_no_network.sh fails the
   build if that changes.

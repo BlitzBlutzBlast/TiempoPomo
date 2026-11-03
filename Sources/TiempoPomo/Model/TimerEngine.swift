@@ -275,7 +275,7 @@ final class TimerEngine: ObservableObject {
         // Keeps App Nap from delaying the chime while the window is hidden.
         if activity == nil {
             activity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiatedAllowingIdleSystemSleep, reason: "PomTiempo timer running")
+                options: .userInitiatedAllowingIdleSystemSleep, reason: "Tiempo Pomo timer running")
         }
     }
 

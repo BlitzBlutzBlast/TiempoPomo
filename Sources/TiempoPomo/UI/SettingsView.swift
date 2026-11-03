@@ -112,7 +112,7 @@ struct SettingsView: View {
             } header: {
                 Text("Your sounds")
             } footer: {
-                Text("PomTiempo keeps its own copy of each file and can only open the files you choose here.")
+                Text("Tiempo Pomo keeps its own copy of each file and can only open the files you choose here.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -140,7 +140,7 @@ struct SettingsView: View {
     private func soundPicker(_ title: String, selection: Binding<String>) -> some View {
         HStack {
             Picker(title, selection: selection) {
-                Section("PomTiempo") {
+                Section("Tiempo Pomo") {
                     ForEach(Sound.appKeys, id: \.self) { Text(Sound.displayName($0)).tag($0) }
                 }
                 if !settings.customSounds.isEmpty {
@@ -195,7 +195,7 @@ struct SettingsView: View {
                     Text("macOS couldn't turn on notifications: \(error)")
                         .foregroundStyle(.secondary)
                 } else if notifier.status == .denied {
-                    Text("macOS is blocking PomTiempo's notifications. Turn them on under Notifications → PomTiempo, then come back.")
+                    Text("macOS is blocking Tiempo Pomo's notifications. Turn them on under Notifications → Tiempo Pomo, then come back.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -215,7 +215,7 @@ struct SettingsView: View {
             .disabled(!settings.notificationsEnabled)
 
             Section {
-                Toggle("Only when PomTiempo is in the background", isOn: $settings.notifyOnlyInBackground)
+                Toggle("Only when Tiempo Pomo is in the background", isOn: $settings.notifyOnlyInBackground)
                 Toggle("Play the system notification sound too", isOn: $settings.notificationSound)
             } header: {
                 Text("Style")

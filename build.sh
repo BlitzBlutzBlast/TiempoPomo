@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds PomTiempo.app and a DMG into dist/.
+# Builds "Tiempo Pomo.app", a DMG and an installer into dist/.
 #
 #   ./build.sh            # version 0.1.0, this Mac's architecture
 #   ./build.sh 0.2.0      # a given version
@@ -12,7 +12,9 @@ cd "$(dirname "$0")"
 
 VERSION="${1:-0.1.0}"
 BUILD="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
-APP_NAME="PomTiempo"
+APP_NAME="Tiempo Pomo"     # what people see: the app, the disk image
+EXEC_NAME="TiempoPomo"     # the executable and Swift target
+FILE_NAME="TiempoPomo"     # downloads, so links have no spaces
 DIST="dist"
 APP="$DIST/$APP_NAME.app"
 
@@ -38,21 +40,21 @@ BIN_DIR="$(swift build "${ARGS[@]}" --show-bin-path)"
 echo "==> Assembling $APP"
 rm -rf "$DIST"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
+cp "$BIN_DIR/$EXEC_NAME" "$APP/Contents/MacOS/$EXEC_NAME"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp -R Resources/Sounds "$APP/Contents/Resources/Sounds"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 echo "==> Signing (ad-hoc, sandboxed, no network)"
-codesign --force --options runtime --entitlements Resources/PomTiempo.entitlements --sign - "$APP"
+codesign --force --options runtime --entitlements Resources/TiempoPomo.entitlements --sign - "$APP"
 scripts/check_no_network.sh "$APP"
 
 echo "==> Packaging DMG"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-DMG="$DIST/$APP_NAME-$VERSION.dmg"
+DMG="$DIST/$FILE_NAME-$VERSION.dmg"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 
@@ -64,7 +66,7 @@ COMPONENTS="$(mktemp -d)/components.plist"
 pkgbuild --analyze --root "$PKGROOT" "$COMPONENTS" >/dev/null
 # Always install to /Applications, never into a copy found elsewhere on disk.
 plutil -replace 0.BundleIsRelocatable -bool NO "$COMPONENTS"
-PKG="$DIST/$APP_NAME-$VERSION.pkg"
+PKG="$DIST/$FILE_NAME-$VERSION.pkg"
 pkgbuild --root "$PKGROOT" --component-plist "$COMPONENTS" \
   --install-location /Applications \
   --identifier com.blitzblutzblast.pomtiempo.pkg --version "$VERSION" \

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="Resources/AppIcon-1024.png" width="160" alt="PomTiempo icon: a tomato whose outline is a progress ring, turned slightly, with a clock at 10:10 inside, on a violet tile">
+  <img src="Resources/AppIcon-1024.png" width="160" alt="Tiempo Pomo icon: a tomato whose outline is a progress ring, turned slightly, with a clock at 10:10 inside, on a violet tile">
 </p>
 
-<h1 align="center">PomTiempo</h1>
+<h1 align="center">Tiempo Pomo</h1>
 
 A calm, glassy Pomodoro timer for macOS. One centred dial, your own session presets, chimes and notifications at every change, and a countdown in the menu bar. Colours are borrowed from [Glassine](https://github.com/BlitzBlutzBlast/glassine).
 
@@ -10,16 +10,16 @@ A calm, glassy Pomodoro timer for macOS. One centred dial, your own session pres
 
 From [Releases](../../releases/latest), pick one:
 
-- **PomTiempo-x.y.z.pkg**: double-click and it installs into Applications. The first time, approve it in System Settings → Privacy & Security → *Open Anyway*.
-- **PomTiempo-x.y.z.dmg**: drag the app to Applications, then **right-click → Open** the first time.
+- **TiempoPomo-x.y.z.pkg**: double-click and it installs into Applications. The first time, approve it in System Settings → Privacy & Security → *Open Anyway*.
+- **TiempoPomo-x.y.z.dmg**: drag the app to Applications, then **right-click → Open** the first time.
 
 The app is ad-hoc signed, not notarized, so macOS asks once.
 
 ## Privacy: no internet, enforced
 
-PomTiempo never goes online. That's enforced, not just promised:
+Tiempo Pomo never goes online. That's enforced, not just promised:
 
-- It runs in the **App Sandbox with no network entitlement** ([`Resources/PomTiempo.entitlements`](Resources/PomTiempo.entitlements)), so macOS refuses any connection it tries to make. Its only other permission is read-only access to an audio file you pick in *Add Sound…*.
+- It runs in the **App Sandbox with no network entitlement** ([`Resources/Tiempo Pomo.entitlements`](Resources/Tiempo Pomo.entitlements)), so macOS refuses any connection it tries to make. Its only other permission is read-only access to an audio file you pick in *Add Sound…*.
 - [`scripts/check_no_network.sh`](scripts/check_no_network.sh) runs on every build. It fails the build if the source uses a networking API, if the binary imports networking symbols or frameworks, or if the signed app isn't sandboxed or holds a network entitlement.
 - No dependencies, no updater, no analytics, no account. Presets and settings live in the app's sandbox container on your Mac.
 
@@ -49,7 +49,7 @@ PomTiempo never goes online. That's enforced, not just promised:
 ## Build it yourself
 
 ```bash
-./build.sh 0.1.0          # → dist/PomTiempo.app, PomTiempo-0.1.0.dmg and PomTiempo-0.1.0.pkg
+./build.sh 0.1.0          # → dist/Tiempo Pomo.app, TiempoPomo-0.1.0.dmg and TiempoPomo-0.1.0.pkg
 ```
 
 Swift package, no Xcode project and no dependencies. Needs macOS 14+ and the Swift toolchain (Xcode or the Command Line Tools). Pushing a `v*` tag makes GitHub Actions build a universal DMG and attach it to a release.

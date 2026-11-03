@@ -1,4 +1,4 @@
-// Draws PomTiempo's app icon: a tomato whose outline is a progress ring,
+// Draws Tiempo Pomo's app icon: a tomato whose outline is a progress ring,
 // turned slightly to one side, with a clock at 10:10 inside, on a violet
 // tile. Flat, geometric and round throughout.
 //

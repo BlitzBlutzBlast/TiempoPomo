@@ -20,7 +20,7 @@ final class Notifier: NSObject, ObservableObject {
     var onStartNext: (() -> Void)?
 
     private let settings: AppSettings
-    private let pendingID = "pomtiempo.phase-end"
+    private let pendingID = "tiempopomo.phase-end"
     nonisolated private static let startAction = "start-next"
     private static let waitingCategory = "waiting"
     nonisolated static let testKey = "test"
@@ -72,7 +72,7 @@ final class Notifier: NSObject, ObservableObject {
             lastError = nil
         } catch {
             lastError = error.localizedDescription
-            NSLog("PomTiempo notification authorization failed: %@", String(describing: error))
+            NSLog("Tiempo Pomo notification authorization failed: %@", String(describing: error))
         }
         await refreshStatus()
     }
@@ -128,12 +128,12 @@ final class Notifier: NSObject, ObservableObject {
     func sendTest() {
         guard let center else { return }
         let content = UNMutableNotificationContent()
-        content.title = "PomTiempo"
+        content.title = "Tiempo Pomo"
         content.body = "Notifications are working. You'll see one like this when a round or break ends."
         content.sound = settings.notificationSound ? .default : nil
         content.userInfo = [Self.testKey: true]
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        center.add(UNNotificationRequest(identifier: "pomtiempo.test", content: content, trigger: trigger))
+        center.add(UNNotificationRequest(identifier: "tiempopomo.test", content: content, trigger: trigger))
     }
 
     func openSystemSettings() {

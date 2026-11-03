@@ -1,4 +1,4 @@
-// Synthesises PomTiempo's own chimes into Resources/Sounds/*.wav: bells,
+// Synthesises Tiempo Pomo's own chimes into Resources/Sounds/*.wav: bells,
 // bowls and marimba notes built from sine partials with exponential decay,
 // so the sounds are original and need no licence.
 // Usage: swift scripts/make_sounds.swift Resources/Sounds

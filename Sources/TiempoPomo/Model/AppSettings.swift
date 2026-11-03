@@ -86,7 +86,7 @@ final class AppSettings: ObservableObject {
     @Published var notifyBreakEnd: Bool = load(Key.notifyBreakEnd, true) { didSet { store(notifyBreakEnd, Key.notifyBreakEnd) } }
     @Published var notifyComplete: Bool = load(Key.notifyComplete, true) { didSet { store(notifyComplete, Key.notifyComplete) } }
     @Published var notifyOnlyInBackground: Bool = load(Key.notifyOnlyInBackground, false) { didSet { store(notifyOnlyInBackground, Key.notifyOnlyInBackground) } }
-    /// The banner's own system sound, on top of PomTiempo's chime.
+    /// The banner's own system sound, on top of Tiempo Pomo's chime.
     @Published var notificationSound: Bool = load(Key.notificationSound, false) { didSet { store(notificationSound, Key.notificationSound) } }
 
     // MARK: General

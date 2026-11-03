@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# PomTiempo must never touch the network. This fails the build if:
+# Tiempo Pomo must never touch the network. This fails the build if:
 #   1. the source uses a networking API,
 #   2. the compiled binary imports networking symbols or frameworks, or
 #   3. the signed app is not sandboxed, or holds a network entitlement.
 #
 #   scripts/check_no_network.sh                      # source checks only
-#   scripts/check_no_network.sh dist/PomTiempo.app   # source + binary + entitlements
+#   scripts/check_no_network.sh "dist/Tiempo Pomo.app"   # source + binary + entitlements
 set -euo pipefail
 cd "$(dirname "$0")/.."
 fail=0
@@ -19,7 +19,7 @@ fi
 
 APP="${1:-}"
 if [[ -n "$APP" ]]; then
-  BIN="$APP/Contents/MacOS/PomTiempo"
+  BIN="$APP/Contents/MacOS/TiempoPomo"
 
   echo "==> No-network check: binary"
   if otool -L "$BIN" | grep -E "Network.framework|CFNetwork|WebKit"; then

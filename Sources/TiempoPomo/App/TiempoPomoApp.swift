@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PomTiempoApp: App {
+struct TiempoPomoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     @StateObject private var settings: AppSettings
@@ -23,7 +23,7 @@ struct PomTiempoApp: App {
     }
 
     var body: some Scene {
-        Window("PomTiempo", id: "main") {
+        Window("Tiempo Pomo", id: "main") {
             MainView()
                 .environmentObject(settings)
                 .environmentObject(store)

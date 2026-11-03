@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "PomTiempo",
+    name: "TiempoPomo",
     platforms: [
         .macOS(.v14)
     ],
     targets: [
         .executableTarget(
-            name: "PomTiempo",
-            path: "Sources/PomTiempo"
+            name: "TiempoPomo",
+            path: "Sources/TiempoPomo"
         )
     ]
 )
