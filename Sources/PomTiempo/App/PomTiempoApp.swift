@@ -31,8 +31,7 @@ struct PomTiempoApp: App {
                 .environmentObject(engine)
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 700, height: 560)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Timer") {

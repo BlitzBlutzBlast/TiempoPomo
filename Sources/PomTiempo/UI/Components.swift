@@ -1,10 +1,16 @@
 import SwiftUI
 
 /// The countdown ring. It starts full and drains as the phase runs down.
+/// While the timer runs, the ring ripples into a wave that flows around it;
+/// when it stops, the wave settles back into a smooth line.
 struct TimerDial: View {
     let theme: AppTheme
     let accent: Color
-    let fractionLeft: Double
+    let ringColors: [Color]
+    /// Fraction of the phase left at a given moment, read every frame so the
+    /// ring drains continuously rather than in steps.
+    let fractionLeft: (Date) -> Double
+    let isRunning: Bool
     let time: String
     let phase: Phase
     let roundText: String
@@ -13,41 +19,83 @@ struct TimerDial: View {
     let repeats: Bool
 
     static let size: CGFloat = 260
-    private let lineWidth: CGFloat = 11
+    private let lineWidth: CGFloat = 10
+    private let waveHeight: CGFloat = 4.5
 
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(theme.text.opacity(theme.isDark ? 0.08 : 0.07), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: fractionLeft)
-                .stroke(
-                    AngularGradient(colors: [accent.opacity(0.55), accent], center: .center,
-                                    startAngle: .degrees(0), endAngle: .degrees(360 * max(fractionLeft, 0.01))),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .shadow(color: accent.opacity(0.55), radius: 10)
-                .animation(.linear(duration: 0.25), value: fractionLeft)
+            WaveRing(fractionLeft: fractionLeft, isRunning: isRunning,
+                     colors: ringColors,
+                     glowColor: (ringColors.dropFirst().first ?? accent).opacity(0.5),
+                     trackColor: theme.text.opacity(theme.isDark ? 0.12 : 0.10),
+                     lineWidth: lineWidth, waveHeight: waveHeight, settleTime: Self.settleTime)
 
             VStack(spacing: 8) {
                 Label(phase.label.uppercased(), systemImage: phase.symbol)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
                     .tracking(1.6)
                     .foregroundStyle(accent)
                 Text(time)
-                    .font(.system(size: 58, weight: .light, design: .rounded))
+                    .font(.system(size: 58, weight: .light, design: theme.fontDesign))
                     .monospacedDigit()
                     .foregroundStyle(theme.text)
                     .contentTransition(.numericText(countsDown: true))
                 RoundDots(theme: theme, accent: accent, total: rounds, current: round,
                           repeats: repeats, done: phase == .complete)
                 Text(roundText)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(.system(size: 11, weight: .medium, design: theme.fontDesign))
                     .foregroundStyle(theme.secondary)
             }
         }
         .frame(width: Self.size, height: Self.size)
+    }
+
+    /// How long the wave takes to swell or settle when the timer starts or stops.
+    static let settleTime: TimeInterval = 0.7
+}
+
+/// An arc from 12 o'clock, clockwise, whose radius ripples as a sine wave.
+/// The wave is fixed to the angle around the circle, not to the arc, so it
+/// keeps its shape as the arc shortens; `phase` slides it along. Only the
+/// wave height animates, so it can swell and settle smoothly.
+struct WavyArc: Shape {
+    var sweep: Double
+    var amplitude: CGFloat
+    var phase: Double
+    var radius: CGFloat
+    /// Number of crests around the full circle.
+    var waves: Double = 14
+
+    var animatableData: CGFloat {
+        get { amplitude }
+        set { amplitude = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        Self.path(sweep: sweep, amplitude: amplitude, phase: phase, radius: radius,
+                  center: CGPoint(x: rect.midX, y: rect.midY), waves: waves)
+    }
+
+    /// `startFraction` starts the arc further round than 12 o'clock.
+    static func path(sweep: Double, amplitude: CGFloat, phase: Double, radius: CGFloat,
+                     center: CGPoint, waves: Double = 14, startFraction: Double = 0) -> Path {
+        var path = Path()
+        guard sweep > 0.0005 else { return path }
+        let total = min(sweep, 1) * 2 * .pi
+        let start = startFraction * 2 * .pi
+        let steps = max(12, Int(total / (2 * .pi) * 240))
+        // The wave eases in and out over the arc's ends so the caps sit on the line.
+        let taper = 0.3
+        for i in 0...steps {
+            let t = Double(i) / Double(steps) * total
+            let k = min(1, min(t, total - t) / taper)
+            let ease = k * k * (3 - 2 * k)
+            let angle = -Double.pi / 2 + start + t
+            let r = Double(radius) + Double(amplitude) * ease * sin(waves * angle - phase)
+            let point = CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
+            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        return path
     }
 }
 
@@ -108,7 +156,7 @@ struct CardHeading: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold, design: theme.fontDesign))
             .tracking(1.4)
             .foregroundStyle(theme.secondary)
     }
@@ -118,16 +166,20 @@ struct CardHeading: View {
 struct AccentButtonStyle: ButtonStyle {
     let theme: AppTheme
     let accent: Color
+    /// More than two colours: the button carries the palette's gradient.
+    var colors: [Color] = []
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .font(.system(size: 15, weight: .semibold, design: theme.fontDesign))
             .tracking(0.6)
             .foregroundStyle(theme.onAccent)
             .padding(.horizontal, 30)
             .padding(.vertical, 12)
             .background(
-                Capsule().fill(LinearGradient(colors: [accent, accent.opacity(0.78)], startPoint: .top, endPoint: .bottom))
+                Capsule().fill(colors.count > 2
+                    ? LinearGradient(colors: Array(colors.dropLast()), startPoint: .leading, endPoint: .trailing)
+                    : LinearGradient(colors: [accent, accent.opacity(0.78)], startPoint: .top, endPoint: .bottom))
             )
             .shadow(color: accent.opacity(configuration.isPressed ? 0.2 : 0.45), radius: 12, y: 4)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
@@ -157,7 +209,7 @@ struct FooterButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12.5, weight: .medium, design: .rounded))
+            .font(.system(size: 12.5, weight: .medium, design: theme.fontDesign))
             .foregroundStyle(theme.text.opacity(hovering ? 1 : 0.72))
             .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, 7)

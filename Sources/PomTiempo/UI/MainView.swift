@@ -14,6 +14,10 @@ struct MainView: View {
     static let sideGap: CGFloat = 30
     /// Card + gap + dial + gap + card: the width everything else lines up to.
     static let rowWidth = sideCard.width * 2 + sideGap * 2 + TimerDial.size
+    /// Space between the card row's outer edges and the window's edges.
+    static let sideMargin: CGFloat = 44
+    /// The window is this size and can't be resized.
+    static let windowSize = CGSize(width: rowWidth + sideMargin * 2, height: 600)
 
     enum Sheet: String, Identifiable {
         case presets, colors, settings
@@ -26,7 +30,7 @@ struct MainView: View {
 
         VStack(spacing: 0) {
             Text("PomTiempo")
-                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                .font(.system(size: 19, weight: .semibold, design: theme.fontDesign))
                 .tracking(0.4)
                 .foregroundStyle(theme.text)
                 .frame(height: 28)
@@ -43,7 +47,9 @@ struct MainView: View {
 
                 TimerDial(
                     theme: theme, accent: accent,
-                    fractionLeft: engine.fractionLeft,
+                    ringColors: theme.ringColors(for: engine.displayPhase),
+                    fractionLeft: engine.fractionLeft(at:),
+                    isRunning: engine.isRunning,
                     time: Format.clock(engine.remaining),
                     phase: engine.phase,
                     roundText: engine.roundText,
@@ -89,23 +95,24 @@ struct MainView: View {
             // padding, so "Update Defaults" starts where the Today card starts
             // and "Settings" ends where the Session card ends.
             .frame(width: Self.rowWidth + FooterButtonStyle.horizontalPadding * 2)
-            .padding(.bottom, 16)
+            .padding(.bottom, 26)
         }
         .ignoresSafeArea(edges: .top)
         .padding(.top, 6)
-        .frame(minWidth: 680, minHeight: 540)
+        .frame(width: Self.windowSize.width, height: Self.windowSize.height)
         // The glow sits behind the dial wherever the layout puts it.
         .backgroundPreferenceValue(DialBoundsKey.self) { anchor in
             GeometryReader { proxy in
                 if let anchor {
                     let rect = proxy[anchor]
+                    let glow = theme.isGradient ? (theme.ringColors(for: engine.displayPhase).dropFirst().first ?? accent) : accent
                     RadialGradient(
-                        colors: [accent.opacity(theme.isDark ? 0.24 : 0.14), accent.opacity(0)],
+                        colors: [glow.opacity(theme.isDark ? 0.24 : 0.14), glow.opacity(0)],
                         center: UnitPoint(x: rect.midX / max(proxy.size.width, 1),
                                           y: rect.midY / max(proxy.size.height, 1)),
                         startRadius: 20, endRadius: 340
                     )
-                    .animation(.easeInOut(duration: 0.8), value: accent)
+                    .animation(.easeInOut(duration: 0.8), value: glow)
                 }
             }
         }
@@ -141,7 +148,8 @@ struct MainView: View {
                 Text(mainButtonTitle)
                     .frame(minWidth: 128)
             }
-            .buttonStyle(AccentButtonStyle(theme: theme, accent: accent))
+            .buttonStyle(AccentButtonStyle(theme: theme, accent: accent,
+                                           colors: theme.ringColors(for: engine.displayPhase)))
             .keyboardShortcut(.space, modifiers: [])
 
             if !engine.isIdle {
@@ -176,17 +184,17 @@ private struct TodayCard: View {
         Card(theme: theme) {
             CardHeading(theme: theme, text: "Today")
             Text(Format.minutes(engine.todayFocusMinutes))
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                .font(.system(size: 24, weight: .semibold, design: theme.fontDesign))
                 .foregroundStyle(theme.text)
             Text("\(engine.todayRounds) focus round\(engine.todayRounds == 1 ? "" : "s")")
-                .font(.system(size: 12, design: .rounded))
+                .font(.system(size: 12, design: theme.fontDesign))
                 .foregroundStyle(theme.secondary)
 
             if let next = engine.upNext {
                 Divider().overlay(theme.stroke).padding(.vertical, 4)
                 CardHeading(theme: theme, text: "Up next")
                 Text(next)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .medium, design: theme.fontDesign))
                     .foregroundStyle(theme.text)
             }
         }
@@ -219,7 +227,7 @@ private struct SessionCard: View {
                     Image(systemName: plan.symbol)
                         .foregroundStyle(accent)
                     Text(plan.name)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold, design: theme.fontDesign))
                         .foregroundStyle(theme.text)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -244,10 +252,10 @@ private struct SessionCard: View {
                 Text("–").foregroundStyle(theme.secondary)
                 Text("\(plan.breakMinutes)").underline()
                 Text("min")
-                    .font(.system(size: 13, design: .rounded))
+                    .font(.system(size: 13, design: theme.fontDesign))
                     .foregroundStyle(theme.secondary)
             }
-            .font(.system(size: 22, weight: .semibold, design: .rounded))
+            .font(.system(size: 22, weight: .semibold, design: theme.fontDesign))
             .foregroundStyle(theme.text)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -259,7 +267,7 @@ private struct SessionCard: View {
                     Text("Total \(Format.minutes(total))")
                 }
             }
-            .font(.system(size: 11.5, design: .rounded))
+            .font(.system(size: 11.5, design: theme.fontDesign))
             .foregroundStyle(theme.secondary)
         }
     }

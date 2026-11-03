@@ -69,6 +69,13 @@ final class TimerEngine: ObservableObject {
         return phaseDuration > 0 ? min(1, max(0, remaining / phaseDuration)) : 1
     }
 
+    /// `fractionLeft` worked out for an exact moment from the deadline, so a
+    /// view redrawn every frame can drain smoothly between ticks.
+    func fractionLeft(at date: Date) -> Double {
+        guard isRunning, let endDate, phaseDuration > 0 else { return fractionLeft }
+        return min(1, max(0, endDate.timeIntervalSince(date) / phaseDuration))
+    }
+
     var roundText: String {
         plan.repeatForever ? "Round \(round)" : "Round \(min(round, plan.rounds)) of \(plan.rounds)"
     }
@@ -213,7 +220,11 @@ final class TimerEngine: ObservableObject {
         if left <= 0 {
             remaining = 0
             advance(natural: true)
-        } else {
+        } else if left.rounded(.up) != remaining.rounded(.up) {
+            // Publish only when the displayed second changes: every publish
+            // redraws the window and the menu bar item, and four a second
+            // costs real battery for nothing anyone can see. The ring reads
+            // `fractionLeft(at:)` itself to drain smoothly in between.
             remaining = left
         }
     }

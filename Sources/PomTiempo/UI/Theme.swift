@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// A colour set for the whole app. The palettes come from Glassine's themes:
+/// A colour set for the whole app. Most palettes come from Glassine's themes:
 /// the same glass tints and text colours, with the accent driving focus
-/// rounds and a second, calmer colour for breaks.
+/// rounds and a second, calmer colour for breaks. A palette can also give the
+/// ring a multi-colour gradient, lay coloured light behind the glass, and
+/// pick its own typeface.
 struct AppTheme: Identifiable, Hashable {
     let id: String
     let name: String
@@ -16,6 +18,14 @@ struct AppTheme: Identifiable, Hashable {
     let secondaryHex: String
     let focusHex: String
     let breakHex: String
+    /// Ring and button colours for focus, when one accent isn't enough.
+    var focusGradient: [String]? = nil
+    var breakGradient: [String]? = nil
+    /// Colours of the soft blooms of light behind the glass.
+    var backdrop: [String]? = nil
+    var fontDesign: Font.Design = .rounded
+    /// Overrides the "done" colour, which is otherwise the secondary text colour.
+    var doneHex: String? = nil
 
     var tintColor: Color { Color(hex: tint) }
     var text: Color { Color(hex: textHex) }
@@ -33,10 +43,26 @@ struct AppTheme: Identifiable, Hashable {
     func accent(for phase: Phase) -> Color {
         switch phase {
         case .shortBreak, .longBreak: return rest
-        case .complete: return secondary
+        case .complete: return doneHex.map { Color(hex: $0) } ?? secondary
         case .idle, .focus: return focus
         }
     }
+
+    /// The ring's colours for a phase: the palette's gradient, or its accent
+    /// fading in from behind.
+    func ringColors(for phase: Phase) -> [Color] {
+        let stops: [String]?
+        switch phase {
+        case .shortBreak, .longBreak: stops = breakGradient
+        case .idle, .focus: stops = focusGradient
+        case .complete: stops = nil
+        }
+        if let stops { return stops.map { Color(hex: $0) } }
+        let a = accent(for: phase)
+        return [a.opacity(0.55), a]
+    }
+
+    var isGradient: Bool { focusGradient != nil }
 }
 
 extension AppTheme {
@@ -77,7 +103,27 @@ extension AppTheme {
         tint: "#FBFAF8", tintOpacity: 0.9, grain: 0.05,
         textHex: "#2C1611", secondaryHex: "#7A6560", focusHex: "#C64B21", breakHex: "#3F8DE0")
 
-    static let all: [AppTheme] = [dusk, ocean, lavender, graphite, sepiaNight, midnight, moss, frost, paper]
+    /// Apple's dark-mode system colours, at full strength: a ring that runs
+    /// pink to orange to purple to blue, over glass lit from behind by blooms
+    /// of the same colours.
+    static let vivid = AppTheme(
+        id: "vivid", name: "Vivid", isDark: true, material: .hudWindow,
+        tint: "#100C24", tintOpacity: 0.62, grain: 0.03,
+        textHex: "#F5F5F7", secondaryHex: "#A1A1AA", focusHex: "#FF375F", breakHex: "#64D2FF",
+        focusGradient: ["#FF375F", "#FF9F0A", "#BF5AF2", "#0A84FF", "#FF375F"],
+        breakGradient: ["#64D2FF", "#30D158", "#0A84FF", "#5E5CE6", "#64D2FF"],
+        backdrop: ["#BF5AF2", "#FF375F", "#0A84FF", "#FF9F0A"],
+        doneHex: "#30D158")
+
+    /// Anthropic's brand palette: ink on warm paper, the orange accent for
+    /// focus, blue for breaks, green when done, and a serif face.
+    static let claude = AppTheme(
+        id: "claude", name: "Claude", isDark: false, material: .titlebar,
+        tint: "#FAF9F5", tintOpacity: 0.94, grain: 0.04,
+        textHex: "#141413", secondaryHex: "#6B6A64", focusHex: "#D97757", breakHex: "#6A9BCC",
+        fontDesign: .serif, doneHex: "#788C5D")
+
+    static let all: [AppTheme] = [dusk, ocean, lavender, graphite, sepiaNight, midnight, moss, frost, paper, vivid, claude]
 }
 
 extension Color {

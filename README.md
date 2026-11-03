@@ -25,7 +25,7 @@ PomTiempo never goes online. That's enforced, not just promised:
 
 ## What's in it
 
-- **Main timer**: a big ring that drains as the round runs, with Start / Pause, Skip and Reset. **Change session time** tweaks the next run without touching the saved session.
+- **Main timer**: a ring that drains clockwise as the round runs. While the timer runs, it ripples into a wave that flows around it (drawn with Core Animation, about 4% CPU, and nothing at all when stopped). Start / Pause, Skip and Reset sit underneath. **Change session time** tweaks the next run without touching the saved session. The window is a fixed size, laid out on one grid.
 - **Sessions** (*Update Defaults*): add, name, duplicate and delete sessions. Each one has focus and break length, number of rounds or *repeat until stopped*, and an optional long break every N rounds. It starts with:
 
   | Session | Focus | Break | Rounds |
@@ -35,7 +35,7 @@ PomTiempo never goes online. That's enforced, not just promised:
   | Reading Session | 30 min | 5 min | 3 |
   | Mindfulness Session | 10 min | 3 min | 2 |
 
-- **App Colors**: nine glass palettes from Glassine (Dusk, Ocean, Lavender, Graphite, Sepia Night, Midnight, Moss, Frost, Paper). Each has one colour for focus and one for breaks.
+- **App Colors**: eleven palettes. Nine glass palettes come from Glassine (Dusk, Ocean, Lavender, Graphite, Sepia Night, Midnight, Moss, Frost, Paper). **Vivid** uses Apple's dark-mode system colours as multi-colour gradients over glass lit from behind. **Claude** uses Anthropic's brand palette: ink on warm paper, orange for focus, blue for breaks, green when done, in a serif face.
 - **Settings**
   - *Sounds*: master volume, and a separate chime for "focus ends → break", "break ends → focus", "session complete" and "session start". Chimes ring 3 times by default (1–5), and Start, Pause, Skip or Reset silences them. Pick from PomTiempo's own pack of 10 (Singing Bowl, Soft Bell, Bright Ding, Rising Chimes, Gentle Gong, Marimba Up/Down, Kalimba, Wood Blocks, Triple Beep), the macOS alert sounds, or **your own audio files** (*Add Sound…*: MP3/M4A/WAV/AIFF/CAF, up to 30 s).
   - *Notifications*: permission status, on/off for each of the three events, "only when in the background", the system banner sound, and a test button. When auto-start is off, banners get a **Start** button.

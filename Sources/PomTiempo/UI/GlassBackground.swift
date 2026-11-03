@@ -62,6 +62,9 @@ struct GlassBackground: View {
     var body: some View {
         ZStack {
             VisualEffectView(material: theme.material)
+            if let blooms = theme.backdrop {
+                BackdropBlooms(colors: blooms.map { Color(hex: $0) }, isDark: theme.isDark)
+            }
             theme.tintColor.opacity(theme.tintOpacity)
             if let glow {
                 RadialGradient(
@@ -73,6 +76,35 @@ struct GlassBackground: View {
             GrainOverlay(opacity: theme.grain)
         }
         .ignoresSafeArea()
+    }
+}
+
+/// Large, heavily blurred pools of colour in the corners, for palettes that
+/// light the glass from behind.
+struct BackdropBlooms: View {
+    let colors: [Color]
+    let isDark: Bool
+
+    // Where each bloom sits, as a fraction of the window, and its size.
+    private let spots: [(x: CGFloat, y: CGFloat, size: CGFloat)] = [
+        (0.05, 0.08, 0.75), (0.95, 0.15, 0.7), (0.1, 0.95, 0.7), (0.92, 0.9, 0.8),
+    ]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width, h = proxy.size.height
+            ZStack {
+                ForEach(Array(colors.prefix(spots.count).enumerated()), id: \.offset) { i, color in
+                    let spot = spots[i]
+                    Circle()
+                        .fill(color.opacity(isDark ? 0.55 : 0.35))
+                        .frame(width: w * spot.size, height: w * spot.size)
+                        .position(x: w * spot.x, y: h * spot.y)
+                }
+            }
+            .blur(radius: 90)
+        }
+        .drawingGroup()
     }
 }
 
