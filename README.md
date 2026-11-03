@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Resources/AppIcon-1024.png" width="160" alt="PomTiempo icon: a glowing countdown ring on violet glass with a little tomato stem on top">
+  <img src="Resources/AppIcon-1024.png" width="160" alt="PomTiempo icon: a tomato whose outline is a progress ring, turned slightly, with a clock at 10:10 inside, on a violet tile">
 </p>
 
 <h1 align="center">PomTiempo</h1>
@@ -54,4 +54,4 @@ PomTiempo never goes online. That's enforced, not just promised:
 
 Swift package, no Xcode project and no dependencies. Needs macOS 14+ and the Swift toolchain (Xcode or the Command Line Tools). Pushing a `v*` tag makes GitHub Actions build a universal DMG and attach it to a release.
 
-`scripts/make_icon.swift` redraws the icon; regenerate `Resources/AppIcon.icns` from it with `sips` + `iconutil`. `scripts/make_sounds.swift Resources/Sounds` re-synthesises the built-in sound pack. Every sound is generated from sine partials, so it's all original.
+`swift scripts/make_icon.swift <dir>` redraws the icon as vector geometry (each small size drawn separately) into `<dir>/AppIcon.iconset`; `iconutil -c icns <dir>/AppIcon.iconset -o Resources/AppIcon.icns` packs it. `scripts/make_sounds.swift Resources/Sounds` re-synthesises the built-in sound pack. Every sound is generated from sine partials, so it's all original.
