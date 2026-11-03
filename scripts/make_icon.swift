@@ -150,9 +150,11 @@ func render(pixels: Int) -> NSBitmapImageRep {
 
     // The tomato: centred on the tile (its full extent, leaves and depth
     // included), turned slightly to the right.
-    let unit: CGFloat = 4.85
+    // Size of the tomato on the tile. ICON_SCALE overrides it for trying sizes.
+    let unit = CGFloat(Double(ProcessInfo.processInfo.environment["ICON_SCALE"] ?? "") ?? 6.21)
     ctx.saveGState()
-    ctx.translateBy(x: 512 - 11, y: 512 - 2)
+    // Offsets that centre the artwork's full extent; they grow with it.
+    ctx.translateBy(x: 512 - 11 * unit / 4.85, y: 512 - 2 * unit / 4.85)
     ctx.concatenate(CGAffineTransform(a: 0.86, b: -0.1, c: 0.03, d: 1, tx: 0, ty: 0))
     ctx.scaleBy(x: unit, y: unit)
 
