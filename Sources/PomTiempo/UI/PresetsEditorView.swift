@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// "Update Defaults": add, name, edit and remove saved sessions.
+/// Settings › Sessions: add, name, edit and remove saved sessions.
 struct PresetsEditorView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var store: PresetStore
     @EnvironmentObject private var engine: TimerEngine
-    @Environment(\.dismiss) private var dismiss
 
     @State private var selection: UUID?
 
@@ -38,16 +37,12 @@ struct PresetsEditorView: View {
                         store.selectedID = selection
                         engine.load(store.selected)
                     }
-                    dismiss()
                 }
-                .disabled(selection == nil || !engine.isIdle)
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
+                .disabled(selection == nil || !engine.isIdle || selection == store.selectedID)
             }
             .padding(14)
         }
-        .frame(width: 640, height: 490)
-        .themedPane(theme)
+        .scrollContentBackground(.hidden)
         .onAppear { selection = store.selectedID }
     }
 
@@ -84,6 +79,7 @@ struct PresetsEditorView: View {
                     store.delete(id)
                     selection = store.presets[min(index, store.presets.count - 1)].id
                 } label: { Image(systemName: "minus") }
+                    .accessibilityLabel("Delete session")
                     .help("Delete session")
                     .disabled(selection == nil || store.presets.count <= 1)
                 Button {
@@ -119,6 +115,8 @@ private struct PresetForm: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(SessionPreset.symbolNames[symbol] ?? symbol)
+                        .accessibilityAddTraits(preset.symbol == symbol ? .isSelected : [])
                     }
                 }
                 .padding(.vertical, 2)

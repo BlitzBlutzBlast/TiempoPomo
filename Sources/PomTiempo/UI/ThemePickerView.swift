@@ -1,37 +1,31 @@
 import SwiftUI
 
-/// "App Colors": pick one of the glass palettes.
+/// Settings › Appearance: pick a palette.
 struct ThemePickerView: View {
     @EnvironmentObject private var settings: AppSettings
-    @Environment(\.dismiss) private var dismiss
-
     var body: some View {
-        let theme = settings.theme
         VStack(alignment: .leading, spacing: 16) {
-            Text("App Colors")
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
             Text("Glass palettes from Glassine, plus Vivid (macOS system colours) and Claude (Anthropic's palette). The ring shows focus colours; the short arc shows breaks.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4), spacing: 12) {
                 ForEach(AppTheme.all) { option in
-                    ThemeSwatch(theme: option, selected: option.id == settings.themeID)
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.3)) { settings.themeID = option.id }
-                        }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.3)) { settings.themeID = option.id }
+                    } label: {
+                        ThemeSwatch(theme: option, selected: option.id == settings.themeID)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(option.name) palette")
+                    .accessibilityAddTraits(option.id == settings.themeID ? .isSelected : [])
                 }
             }
 
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
-            }
+            Spacer(minLength: 0)
         }
         .padding(22)
-        .frame(width: 600)
-        .themedPane(theme)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -65,7 +59,7 @@ private struct ThemeSwatch: View {
 
             HStack(spacing: 5) {
                 Text(theme.name)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
                     .foregroundStyle(theme.text)
                 if selected {
                     Image(systemName: "checkmark.circle.fill")

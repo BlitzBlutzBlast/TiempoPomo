@@ -7,43 +7,46 @@ import SwiftUI
 /// ring a multi-colour gradient, lay coloured light behind the glass, and
 /// pick its own typeface.
 struct AppTheme: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let isDark: Bool
-    let material: NSVisualEffectView.Material
-    let tint: String
-    let tintOpacity: Double
-    let grain: Double
-    let textHex: String
-    let secondaryHex: String
-    let focusHex: String
-    let breakHex: String
+    var id: String
+    var name: String
+    var isDark: Bool
+    var material: NSVisualEffectView.Material
+    var tint: String
+    var tintOpacity: Double
+    var grain: Double
+    var textHex: String
+    var secondaryHex: String
+    var focusHex: String
+    var breakHex: String
     /// Ring and button colours for focus, when one accent isn't enough.
     var focusGradient: [String]? = nil
     var breakGradient: [String]? = nil
     /// Colours of the soft blooms of light behind the glass.
     var backdrop: [String]? = nil
-    var fontDesign: Font.Design = .rounded
+    /// SF Pro by default, like the rest of macOS; a palette can choose another face.
+    var fontDesign: Font.Design = .default
     /// Overrides the "done" colour, which is otherwise the secondary text colour.
     var doneHex: String? = nil
+    /// Set by `adjusted(for:)` when the Mac asks for more contrast.
+    var highContrast = false
 
     var tintColor: Color { Color(hex: tint) }
     var text: Color { Color(hex: textHex) }
-    var secondary: Color { Color(hex: secondaryHex) }
+    var secondary: Color { highContrast ? text.opacity(0.88) : Color(hex: secondaryHex) }
     var focus: Color { Color(hex: focusHex) }
     var rest: Color { Color(hex: breakHex) }
 
     var colorScheme: ColorScheme { isDark ? .dark : .light }
     /// Fill for cards and quiet buttons.
-    var surface: Color { text.opacity(isDark ? 0.07 : 0.05) }
-    var stroke: Color { text.opacity(isDark ? 0.12 : 0.10) }
+    var surface: Color { text.opacity(highContrast ? 0.12 : (isDark ? 0.07 : 0.05)) }
+    var stroke: Color { text.opacity(highContrast ? 0.45 : (isDark ? 0.12 : 0.10)) }
     /// Text on a filled accent button.
     var onAccent: Color { isDark ? Color.black.opacity(0.82) : .white }
 
     func accent(for phase: Phase) -> Color {
         switch phase {
         case .shortBreak, .longBreak: return rest
-        case .complete: return doneHex.map { Color(hex: $0) } ?? secondary
+        case .complete: return doneHex.map { Color(hex: $0) } ?? focus
         case .idle, .focus: return focus
         }
     }
@@ -63,6 +66,37 @@ struct AppTheme: Identifiable, Hashable {
     }
 
     var isGradient: Bool { focusGradient != nil }
+
+    /// The palette as the Mac's accessibility settings want it: solid
+    /// instead of glass with Reduce Transparency, stronger text and edges
+    /// with Increase Contrast.
+    func adjusted(reduceTransparency: Bool, increaseContrast: Bool) -> AppTheme {
+        var t = self
+        if reduceTransparency {
+            t.tintOpacity = 1
+            t.grain = 0
+            t.backdrop = nil
+        }
+        t.highContrast = increaseContrast
+        return t
+    }
+}
+
+/// Hands its content the palette adjusted for the Mac's accessibility settings.
+struct Themed<Content: View>: View {
+    let base: AppTheme
+    @ViewBuilder let content: (AppTheme) -> Content
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    init(_ base: AppTheme, @ViewBuilder content: @escaping (AppTheme) -> Content) {
+        self.base = base
+        self.content = content
+    }
+
+    var body: some View {
+        content(base.adjusted(reduceTransparency: reduceTransparency, increaseContrast: contrast == .increased))
+    }
 }
 
 extension AppTheme {

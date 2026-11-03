@@ -59,6 +59,14 @@ extension SessionPreset {
 
     static let builtIns: [SessionPreset] = [defaultSession, schoolStudy, reading, mindfulness]
 
+    /// Spoken names for the icons, for VoiceOver.
+    static let symbolNames: [String: String] = [
+        "timer": "Timer", "graduationcap": "Graduation cap", "book": "Book", "leaf": "Leaf",
+        "brain.head.profile": "Brain", "pencil": "Pencil", "laptopcomputer": "Laptop",
+        "music.note": "Music", "dumbbell": "Dumbbell", "paintbrush": "Paintbrush",
+        "flame": "Flame", "moon.stars": "Moon and stars",
+    ]
+
     static let symbols: [String] = [
         "timer", "graduationcap", "book", "leaf", "brain.head.profile", "pencil",
         "laptopcomputer", "music.note", "dumbbell", "paintbrush", "flame", "moon.stars",

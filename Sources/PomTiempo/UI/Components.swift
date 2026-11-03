@@ -10,10 +10,15 @@ struct TimerDial: View {
     let accent: Color
     let ringColors: [Color]
     let phase: Phase
-    let roundText: String
     let rounds: Int
     let round: Int
     let repeats: Bool
+    /// "Next: Break · 10 min" while a session is under way.
+    let next: String?
+    /// "4 rounds · 2h 40m focused" when the session is done.
+    let summary: String
+    /// Spoken by VoiceOver, e.g. "Round 2 of 4".
+    let roundText: String
 
     static let size: CGFloat = 260
     private let lineWidth: CGFloat = 10
@@ -22,24 +27,63 @@ struct TimerDial: View {
 
     var body: some View {
         ZStack {
-            ring
-            VStack(spacing: 8) {
-                Label(phase.label.uppercased(), systemImage: phase.symbol)
-                    .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
-                    .tracking(1.6)
-                    .foregroundStyle(accent)
-                Text(Format.clock(TimeInterval(countdown.seconds)))
-                    .font(.system(size: 58, weight: .light, design: theme.fontDesign))
-                    .monospacedDigit()
-                    .foregroundStyle(theme.text)
-                RoundDots(theme: theme, accent: accent, total: rounds, current: round,
-                          repeats: repeats, done: phase == .complete)
-                Text(roundText)
-                    .font(.system(size: 11, weight: .medium, design: theme.fontDesign))
-                    .foregroundStyle(theme.secondary)
+            if phase == .complete {
+                FinishRing(color: accent, lineWidth: lineWidth, inset: inset)
+                finished
+            } else {
+                ring
+                running
             }
         }
         .frame(width: Self.size, height: Self.size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var running: some View {
+        VStack(spacing: 10) {
+            Label(phase.label.uppercased(), systemImage: phase.symbol)
+                .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
+                .tracking(1.4)
+                .foregroundStyle(accent)
+            Text(Format.clock(TimeInterval(countdown.seconds)))
+                .font(.system(size: 60, weight: .light, design: theme.fontDesign))
+                .monospacedDigit()
+                .foregroundStyle(theme.text)
+            // Dots only when there's more than one round to count.
+            if repeats || rounds > 1 {
+                RoundDots(theme: theme, accent: accent, total: rounds, current: round,
+                          repeats: repeats, done: false)
+            }
+            if let next {
+                Text(next)
+                    .font(.system(size: 11.5, weight: .medium, design: theme.fontDesign))
+                    .foregroundStyle(theme.secondary)
+            }
+        }
+    }
+
+    private var finished: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(accent)
+            Text("Session complete")
+                .font(.system(size: 20, weight: .semibold, design: theme.fontDesign))
+                .foregroundStyle(theme.text)
+            Text(summary)
+                .font(.system(size: 12.5, design: theme.fontDesign))
+                .foregroundStyle(theme.secondary)
+        }
+    }
+
+    private var accessibilityText: String {
+        if phase == .complete { return "Session complete. \(summary)" }
+        let m = countdown.seconds / 60, s = countdown.seconds % 60
+        var parts = ["\(phase.label), \(m) minute\(m == 1 ? "" : "s") \(s) second\(s == 1 ? "" : "s") left"]
+        if rounds > 1 || repeats { parts.append(roundText) }
+        if let next { parts.append(next) }
+        return parts.joined(separator: ". ")
     }
 
     private var ring: some View {
@@ -56,7 +100,7 @@ struct TimerDial: View {
                 Circle()
                     .inset(by: inset + lineWidth / 2)
                     .trim(from: left + gap, to: 1 - gap)
-                    .stroke(theme.text.opacity(theme.isDark ? 0.12 : 0.10),
+                    .stroke(theme.text.opacity(theme.highContrast ? 0.3 : (theme.isDark ? 0.12 : 0.10)),
                             style: StrokeStyle(lineWidth: 4, lineCap: .round))
             }
             Circle()
@@ -69,6 +113,27 @@ struct TimerDial: View {
         // Draw on the GPU: CoreGraphics would otherwise work out the
         // gradient pixel by pixel on the CPU every second.
         .drawingGroup()
+    }
+}
+
+/// The finished session's ring: sweeps closed once in the "done" colour,
+/// then stays still.
+private struct FinishRing: View {
+    let color: Color
+    let lineWidth: CGFloat
+    let inset: CGFloat
+    @State private var sweep: Double = 0
+
+    var body: some View {
+        Circle()
+            .inset(by: inset + lineWidth / 2)
+            .trim(from: 0, to: sweep)
+            .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            .shadow(color: color.opacity(0.5), radius: 8)
+            .rotationEffect(.degrees(-90))
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.1)) { sweep = 1 }
+            }
     }
 }
 
@@ -145,7 +210,6 @@ struct AccentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .semibold, design: theme.fontDesign))
-            .tracking(0.6)
             .foregroundStyle(theme.onAccent)
             .padding(.horizontal, 30)
             .padding(.vertical, 12)
@@ -187,6 +251,28 @@ struct FooterButtonStyle: ButtonStyle {
             .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, 7)
             .background(Capsule().fill(hovering || configuration.isPressed ? theme.surface : .clear))
+            .onHover { hovering = $0 }
+    }
+}
+
+/// A rounded, quiet button for the session and timing under the dial.
+struct PillLabel<Content: View>: View {
+    let theme: AppTheme
+    @ViewBuilder var content: Content
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 6) { content }
+            .font(.system(size: 12.5, weight: .medium, design: theme.fontDesign))
+            .foregroundStyle(theme.text.opacity(isEnabled ? 0.92 : 0.6))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(hovering && isEnabled ? theme.surface.opacity(2) : theme.surface)
+                    .overlay(Capsule().stroke(theme.stroke))
+            )
+            .contentShape(Capsule())
             .onHover { hovering = $0 }
     }
 }

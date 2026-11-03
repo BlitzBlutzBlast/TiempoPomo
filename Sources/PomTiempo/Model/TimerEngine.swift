@@ -36,6 +36,19 @@ final class Countdown: ObservableObject {
     @Published fileprivate(set) var seconds = 0
     /// Fraction of the phase still to go, 1 → 0.
     @Published fileprivate(set) var fraction: Double = 1
+
+    /// Windows currently on screen that show the countdown. With none, the
+    /// timer keeps counting but stops redrawing anything.
+    private var watchers = Set<ObjectIdentifier>()
+    fileprivate var refresh: (() -> Void)?
+
+    var isWatched: Bool { !watchers.isEmpty }
+
+    func setVisible(_ visible: Bool, for viewer: ObjectIdentifier) {
+        let was = isWatched
+        if visible { watchers.insert(viewer) } else { watchers.remove(viewer) }
+        if !was && isWatched { refresh?() }
+    }
 }
 
 /// What the menu bar item shows. It only publishes when its text actually
@@ -63,6 +76,9 @@ final class TimerEngine: ObservableObject {
     @Published private(set) var isCustomized = false
     @Published private(set) var todayFocusMinutes = 0
     @Published private(set) var todayRounds = 0
+    /// Focus rounds finished (not skipped) in the current session, for the summary.
+    @Published private(set) var sessionRounds = 0
+    @Published private(set) var sessionFocusMinutes = 0
 
     let countdown = Countdown()
     let menuClock = MenuBarClock()
@@ -88,6 +104,7 @@ final class TimerEngine: ObservableObject {
         self.plan = preset
         loadStats()
         resetToStart()
+        countdown.refresh = { [weak self] in self?.publishTime() }
         styleWatch = settings.$menuBarStyle.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async { self?.publishTime() }
         }
@@ -105,10 +122,12 @@ final class TimerEngine: ObservableObject {
     }
 
     private func publishTime() {
-        let seconds = max(0, Int(remaining.rounded(.up)))
-        if countdown.seconds != seconds { countdown.seconds = seconds }
-        let fraction = fractionLeft
-        if countdown.fraction != fraction { countdown.fraction = fraction }
+        if countdown.isWatched {
+            let seconds = max(0, Int(remaining.rounded(.up)))
+            if countdown.seconds != seconds { countdown.seconds = seconds }
+            let fraction = fractionLeft
+            if countdown.fraction != fraction { countdown.fraction = fraction }
+        }
 
         let text: String?
         if isIdle {
@@ -123,6 +142,13 @@ final class TimerEngine: ObservableObject {
         if menuClock.text != text { menuClock.text = text }
         let symbol = isIdle ? "timer" : (isRunning ? phase.symbol : "pause.circle")
         if menuClock.symbol != symbol { menuClock.symbol = symbol }
+    }
+
+    /// "4 rounds · 2h 40m focused", for the end of a session.
+    var sessionSummary: String {
+        guard sessionRounds > 0 else { return "Rounds were skipped" }
+        let r = "\(sessionRounds) round\(sessionRounds == 1 ? "" : "s")"
+        return sessionFocusMinutes > 0 ? "\(r) · \(Format.minutes(sessionFocusMinutes)) focused" : r
     }
 
     var roundText: String {
@@ -164,6 +190,8 @@ final class TimerEngine: ObservableObject {
         if isIdle {
             phase = .focus
             round = 1
+            sessionRounds = 0
+            sessionFocusMinutes = 0
             setDuration()
             if settings.playStartSound { settings.chime(settings.startSound, once: true) }
         }
@@ -363,6 +391,8 @@ final class TimerEngine: ObservableObject {
     }
 
     private func recordFocusRound() {
+        sessionRounds += 1
+        sessionFocusMinutes += plan.focusMinutes
         loadStats()
         todayFocusMinutes += plan.focusMinutes
         todayRounds += 1

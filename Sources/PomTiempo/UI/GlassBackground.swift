@@ -58,6 +58,9 @@ struct GrainOverlay: NSViewRepresentable {
 struct GlassBackground: View {
     let theme: AppTheme
     var glow: Color? = nil
+    /// During breaks the whole window leans toward the break colour, so the
+    /// phase reads from across the room.
+    var breakTint: Color? = nil
 
     var body: some View {
         ZStack {
@@ -66,6 +69,9 @@ struct GlassBackground: View {
                 BackdropBlooms(colors: blooms.map { Color(hex: $0) }, isDark: theme.isDark)
             }
             theme.tintColor.opacity(theme.tintOpacity)
+            (breakTint ?? .clear)
+                .opacity(theme.isDark ? 0.16 : 0.10)
+                .animation(.easeInOut(duration: 0.8), value: breakTint)
             if let glow {
                 RadialGradient(
                     colors: [glow.opacity(theme.isDark ? 0.24 : 0.14), glow.opacity(0)],
@@ -145,5 +151,54 @@ extension View {
             .background(GlassBackground(theme: theme))
             .preferredColorScheme(theme.colorScheme)
             .tint(theme.focus)
+    }
+}
+
+/// Tells the countdown whether the window it sits in is on screen, so a
+/// closed, minimised or covered window stops redrawing every second.
+struct CountdownVisibility: NSViewRepresentable {
+    let countdown: Countdown
+
+    func makeNSView(context: Context) -> Reporter {
+        let v = Reporter()
+        v.countdown = countdown
+        return v
+    }
+
+    func updateNSView(_ v: Reporter, context: Context) {}
+
+    static func dismantleNSView(_ v: Reporter, coordinator: ()) {
+        v.report(false)
+    }
+
+    final class Reporter: NSView {
+        weak var countdown: Countdown?
+        private var observers: [NSObjectProtocol] = []
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { report(false); return }
+            let center = NotificationCenter.default
+            observers.append(center.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
+                                                object: window, queue: .main) { [weak self] _ in self?.update() })
+            observers.append(center.addObserver(forName: NSWindow.willCloseNotification,
+                                                object: window, queue: .main) { [weak self] _ in self?.report(false) })
+            update()
+        }
+
+        private func update() {
+            report(window?.occlusionState.contains(.visible) ?? false)
+        }
+
+        func report(_ visible: Bool) {
+            let id = ObjectIdentifier(self)
+            MainActor.assumeIsolated { countdown?.setVisible(visible, for: id) }
+        }
+
+        deinit {
+            observers.forEach(NotificationCenter.default.removeObserver)
+        }
     }
 }

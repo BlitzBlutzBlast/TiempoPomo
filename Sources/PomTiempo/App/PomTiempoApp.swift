@@ -52,18 +52,29 @@ struct PomTiempoApp: App {
                 .environmentObject(engine)
         }
 
+        Window("Mini Timer", id: "mini") {
+            MiniTimerView()
+                .environmentObject(settings)
+                .environmentObject(engine)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultPosition(.topTrailing)
+
         // MenuBarExtra writes this binding back on every update; writing the
         // same value would republish settings and redraw forever.
         MenuBarExtra(isInserted: Binding(
             get: { settings.showMenuBarTimer },
             set: { if settings.showMenuBarTimer != $0 { settings.showMenuBarTimer = $0 } }
         )) {
-            MenuBarMenu()
+            MenuBarPanel()
+                .environmentObject(settings)
                 .environmentObject(engine)
                 .environmentObject(store)
         } label: {
             MenuBarLabel(clock: engine.menuClock)
         }
+        .menuBarExtraStyle(.window)
     }
 }
 

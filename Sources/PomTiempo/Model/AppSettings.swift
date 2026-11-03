@@ -112,6 +112,17 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// Whether the mini timer window is open. It follows the window itself,
+    /// so the Settings switch, the menu bar item and the pill's ✕ agree.
+    @Published var showMiniTimer = false
+
+    /// Which Settings tab to show; set just before opening the window.
+    @Published var settingsTab: SettingsTab = .sessions
+
+    enum SettingsTab: String, Hashable {
+        case sessions, appearance, sounds, notifications, general
+    }
+
     // MARK: Colors
 
     @Published var themeID: String = load(Key.themeID, AppTheme.dusk.id) { didSet { store(themeID, Key.themeID) } }

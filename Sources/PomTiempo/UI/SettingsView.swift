@@ -1,56 +1,42 @@
 import AppKit
 import SwiftUI
 
+/// The standard macOS Settings window (⌘,): Sessions, Appearance, Sounds,
+/// Notifications and General, as toolbar tabs.
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var engine: TimerEngine
     @EnvironmentObject private var notifier: Notifier
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
 
-    /// The sheet from the main window has a Done button; the ⌘, window doesn't need one.
-    var showsDone = false
-
-    @State private var tab: Tab = .sounds
     @State private var importProblems: [String] = []
-
-    enum Tab: String, CaseIterable, Identifiable {
-        case sounds = "Sounds"
-        case notifications = "Notifications"
-        case general = "General"
-        var id: String { rawValue }
-    }
 
     var body: some View {
         let theme = settings.theme
-        VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 340)
-            .padding(.top, 18)
-
-            Group {
-                switch tab {
-                case .sounds: soundsForm
-                case .notifications: notificationsForm
-                case .general: generalForm
-                }
-            }
-            .formStyle(.grouped)
-
-            if showsDone {
-                HStack {
-                    Spacer()
-                    Button("Done") { dismiss() }
-                        .keyboardShortcut(.defaultAction)
-                }
-                .padding([.horizontal, .bottom], 16)
-            }
+        TabView(selection: $settings.settingsTab) {
+            PresetsEditorView()
+                .tabItem { Label("Sessions", systemImage: "square.stack.3d.up") }
+                .tag(AppSettings.SettingsTab.sessions)
+            ThemePickerView()
+                .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                .tag(AppSettings.SettingsTab.appearance)
+            soundsForm
+                .formStyle(.grouped)
+                .tabItem { Label("Sounds", systemImage: "speaker.wave.2") }
+                .tag(AppSettings.SettingsTab.sounds)
+            notificationsForm
+                .formStyle(.grouped)
+                .tabItem { Label("Notifications", systemImage: "bell.badge") }
+                .tag(AppSettings.SettingsTab.notifications)
+            generalForm
+                .formStyle(.grouped)
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(AppSettings.SettingsTab.general)
         }
-        .frame(width: 500, height: 500)
-        .themedPane(theme)
+        .frame(width: 640, height: 520)
+        .preferredColorScheme(theme.colorScheme)
+        .tint(theme.focus)
         .task { await notifier.refreshStatus() }
     }
 
@@ -266,6 +252,13 @@ struct SettingsView: View {
                 }
                 .disabled(!settings.showMenuBarTimer)
                 Toggle("Keep window on top of other apps", isOn: $settings.floatOnTop)
+                Toggle(isOn: Binding(
+                    get: { settings.showMiniTimer },
+                    set: { $0 ? openWindow(id: "mini") : dismissWindow(id: "mini") }
+                )) {
+                    Text("Show mini timer")
+                    Text("A small pill with the time and pause, on top of every app and Space.")
+                }
             }
             Section {
                 LabeledContent("Today", value: "\(Format.minutes(engine.todayFocusMinutes)) · \(engine.todayRounds) rounds")
