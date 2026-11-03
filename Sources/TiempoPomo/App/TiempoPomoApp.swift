@@ -81,6 +81,7 @@ struct TiempoPomoApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor static weak var engine: TimerEngine?
     private var keyMonitor: Any?
+    private var windowObservers: [NSObjectProtocol] = []
 
     /// ⌘↩ start/pause, ⌘→ skip, ⌘R reset. Done with a key monitor rather
     /// than `.keyboardShortcut` on the Timer menu's buttons, which crashes
@@ -103,6 +104,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             default:
                 return event
             }
+        }
+
+        // Follow the windows to decide whether Tiempo Pomo belongs in the Dock.
+        let center = NotificationCenter.default
+        windowObservers.append(center.addObserver(forName: NSWindow.willCloseNotification,
+                                                  object: nil, queue: .main) { note in
+            let closing = note.object as? NSWindow
+            // Let the close finish before counting what's left.
+            DispatchQueue.main.async { MainActor.assumeIsolated { AppDelegate.updateDockIcon(ignoring: closing) } }
+        })
+        windowObservers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification,
+                                                  object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { AppDelegate.updateDockIcon() }
+        })
+    }
+
+    /// The app's own windows: the main window and Settings. Not the mini
+    /// timer (it drops its title bar) or the menu bar popover (a panel).
+    /// A minimised window still counts, so it can be found in the Dock.
+    @MainActor private static func hasAppWindow(ignoring closing: NSWindow?) -> Bool {
+        NSApp.windows.contains { window in
+            window !== closing
+                && !(window is NSPanel)
+                && window.styleMask.contains(.titled)
+                && (window.isVisible || window.isMiniaturized)
+        }
+    }
+
+    /// Shows the Dock icon while a window is open, and hides it once the
+    /// last one closes if "Hide from the Dock" is on.
+    @MainActor static func updateDockIcon(ignoring closing: NSWindow? = nil) {
+        let defaults = UserDefaults.standard
+        let menuBar = defaults.object(forKey: AppSettings.Key.showMenuBarTimer) as? Bool ?? true
+        let hide = defaults.object(forKey: AppSettings.Key.hideDockIconWhenClosed) as? Bool ?? true
+        let wanted: NSApplication.ActivationPolicy =
+            menuBar && hide && !hasAppWindow(ignoring: closing) ? .accessory : .regular
+        guard NSApp.activationPolicy() != wanted else { return }
+        NSApp.setActivationPolicy(wanted)
+        if wanted == .regular {
+            // Coming back from menu-bar-only: re-activate so the app's menus
+            // and the window come to the front.
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
