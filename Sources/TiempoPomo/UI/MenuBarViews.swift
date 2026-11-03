@@ -26,6 +26,8 @@ struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @Environment(\.dismissWindow) private var dismissWindow
+    /// The popover's own window, so picking a destination can close it.
+    @State private var panelWindow: NSWindow?
 
     var body: some View {
         Themed(settings.theme) { theme in
@@ -34,7 +36,7 @@ struct MenuBarPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     Label(engine.phase == .idle ? "Ready" : engine.phase.label, systemImage: engine.phase.symbol)
                         .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
-                        .foregroundStyle(accent)
+                        .foregroundStyle(theme.accentText(for: engine.displayPhase))
                     Spacer()
                     Text(engine.plan.name)
                         .font(.system(size: 12, design: theme.fontDesign))
@@ -42,7 +44,7 @@ struct MenuBarPanel: View {
                         .lineLimit(1)
                 }
 
-                PanelTime(countdown: engine.countdown, theme: theme, accent: accent,
+                PanelTime(countdown: engine.countdown, theme: theme, accent: theme.accentShape(for: engine.displayPhase),
                           roundText: engine.plan.rounds > 1 || engine.plan.repeatForever ? engine.roundText : nil)
 
                 HStack(spacing: 10) {
@@ -50,8 +52,7 @@ struct MenuBarPanel: View {
                         Text(engine.isRunning ? "Pause" : (engine.phaseStarted ? "Resume" : "Start"))
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(AccentButtonStyle(theme: theme, accent: accent,
-                                                   colors: theme.ringColors(for: engine.displayPhase)))
+                    .buttonStyle(AccentButtonStyle(theme: theme, fill: theme.buttonFill(for: engine.displayPhase)))
                     if !engine.isIdle {
                         Button(action: engine.reset) { Image(systemName: "arrow.counterclockwise") }
                             .buttonStyle(CircleIconButtonStyle(theme: theme))
@@ -63,16 +64,32 @@ struct MenuBarPanel: View {
                 }
 
                 if engine.isIdle {
-                    Picker("Session", selection: Binding(
-                        get: { store.selectedID },
-                        set: { id in
-                            store.selectedID = id
-                            engine.load(store.selected)
+                    // The palette's own pill rather than a system pop-up, which
+                    // takes on the accent and can lose contrast on dark palettes.
+                    Menu {
+                        ForEach(store.presets) { preset in
+                            Button {
+                                store.selectedID = preset.id
+                                engine.load(store.selected)
+                            } label: {
+                                Label(preset.name, systemImage: preset.id == store.selectedID ? "checkmark" : preset.symbol)
+                            }
                         }
-                    )) {
-                        ForEach(store.presets) { Text($0.name).tag($0.id) }
+                    } label: {
+                        PillLabel(theme: theme) {
+                            Image(systemName: engine.plan.symbol)
+                            Text(engine.plan.name).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .opacity(0.7)
+                        }
                     }
-                    .font(.system(size: 12, design: theme.fontDesign))
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .focusEffectDisabled()
+                    .accessibilityLabel("Session: \(engine.plan.name)")
                 }
 
                 Divider()
@@ -100,13 +117,19 @@ struct MenuBarPanel: View {
             .frame(width: 280)
             .background(GlassBackground(theme: theme, breakTint: engine.phase.isBreak ? theme.rest : nil))
             .background(CountdownVisibility(countdown: engine.countdown))
+            .background(PanelWindowReader(window: $panelWindow))
             .preferredColorScheme(theme.colorScheme)
             .tint(accent)
         }
     }
 
+    /// A row that goes somewhere: it closes the popover first, so the window
+    /// it opens isn't left covered.
     private func panelLink(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            panelWindow?.orderOut(nil)
+            action()
+        } label: {
             Label(title, systemImage: symbol)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 5)
@@ -157,6 +180,19 @@ private struct PanelTime: View {
             }
             .frame(height: 4)
             .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Finds the window this view is in (the menu bar popover's).
+private struct PanelWindowReader: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if window !== view.window { window = view.window }
         }
     }
 }

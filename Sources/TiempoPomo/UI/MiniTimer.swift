@@ -14,16 +14,16 @@ struct MiniTimerView: View {
         Themed(settings.theme) { theme in
             let accent = theme.accent(for: engine.displayPhase)
             HStack(spacing: 10) {
-                MiniProgress(countdown: engine.countdown, accent: accent, track: theme.stroke,
+                MiniProgress(countdown: engine.countdown, accent: theme.accentShape(for: engine.displayPhase), track: theme.stroke,
                              symbol: engine.phase.symbol)
                 MiniTime(countdown: engine.countdown, theme: theme, phase: engine.phase)
                 Spacer(minLength: 4)
                 Button(action: engine.toggle) {
                     Image(systemName: engine.isRunning ? "pause.fill" : "play.fill")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(theme.onAccent)
+                        .foregroundStyle(theme.buttonFill(for: engine.displayPhase).label)
                         .frame(width: 30, height: 30)
-                        .background(Circle().fill(accent))
+                        .background(Circle().fill(theme.buttonFill(for: engine.displayPhase).stops[0]))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(engine.isRunning ? "Pause" : "Start")

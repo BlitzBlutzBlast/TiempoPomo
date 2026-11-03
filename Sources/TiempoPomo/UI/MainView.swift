@@ -220,8 +220,7 @@ struct MainView: View {
                 Text(mainButtonTitle)
                     .frame(minWidth: 120)
             }
-            .buttonStyle(AccentButtonStyle(theme: theme, accent: accent,
-                                           colors: theme.ringColors(for: engine.displayPhase)))
+            .buttonStyle(AccentButtonStyle(theme: theme, fill: theme.buttonFill(for: engine.displayPhase)))
             .keyboardShortcut(.space, modifiers: [])
 
             if !engine.isIdle {
