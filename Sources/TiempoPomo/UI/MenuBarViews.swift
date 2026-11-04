@@ -115,9 +115,14 @@ struct MenuBarPanel: View {
             }
             .padding(16)
             .frame(width: 280)
-            .background(GlassBackground(theme: theme, breakTint: engine.phase.isBreak ? theme.rest : nil))
+            // The glass fills the whole popover window, edge to edge, so none
+            // of the system's own window background shows above or below.
+            .background {
+                GlassBackground(theme: theme, breakTint: engine.phase.isBreak ? theme.rest : nil)
+                    .ignoresSafeArea()
+            }
             .background(CountdownVisibility(countdown: engine.countdown))
-            .background(PanelWindowReader(window: $panelWindow))
+            .background(PanelWindowReader(window: $panelWindow, isDark: theme.isDark))
             .preferredColorScheme(theme.colorScheme)
             .tint(accent)
         }
@@ -185,14 +190,25 @@ private struct PanelTime: View {
 }
 
 /// Finds the window this view is in (the menu bar popover's).
+/// Finds the window this view is in (the menu bar popover's), and gives it
+/// the palette's light or dark appearance. Without that the popover follows
+/// the Mac's appearance, so a dark palette's glass is drawn light and its
+/// text loses contrast. The window's own background is cleared so only the
+/// palette's glass shows.
 private struct PanelWindowReader: NSViewRepresentable {
     @Binding var window: NSWindow?
+    let isDark: Bool
 
     func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ view: NSView, context: Context) {
+        let isDark = isDark
         DispatchQueue.main.async {
-            if window !== view.window { window = view.window }
+            guard let found = view.window else { return }
+            if window !== found { window = found }
+            let name: NSAppearance.Name = isDark ? .darkAqua : .aqua
+            if found.appearance?.name != name { found.appearance = NSAppearance(named: name) }
+            if found.backgroundColor != .clear { found.backgroundColor = .clear }
         }
     }
 }
