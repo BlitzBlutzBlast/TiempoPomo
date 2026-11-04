@@ -32,7 +32,8 @@ struct AppTheme: Identifiable, Hashable {
 
     var tintColor: Color { Color(hex: tint) }
     var text: Color { Color(hex: textHex) }
-    var secondary: Color { highContrast ? text.opacity(0.88) : Color(hex: secondaryHex) }
+    /// Secondary text, nudged if needed to stay at 4.5:1 on this palette's glass.
+    var secondary: Color { highContrast ? text.opacity(0.88) : readable(secondaryHex).color }
     var focus: Color { Color(hex: focusHex) }
     var rest: Color { Color(hex: breakHex) }
 
@@ -40,8 +41,6 @@ struct AppTheme: Identifiable, Hashable {
     /// Fill for cards and quiet buttons.
     var surface: Color { text.opacity(highContrast ? 0.12 : (isDark ? 0.07 : 0.05)) }
     var stroke: Color { text.opacity(highContrast ? 0.45 : (isDark ? 0.12 : 0.10)) }
-    /// Text on a filled accent button.
-    var onAccent: Color { isDark ? Color.black.opacity(0.82) : .white }
 
     func accent(for phase: Phase) -> Color {
         switch phase {
@@ -79,6 +78,131 @@ struct AppTheme: Identifiable, Hashable {
         }
         t.highContrast = increaseContrast
         return t
+    }
+}
+
+// MARK: - Contrast
+//
+// Text and small controls are checked against WCAG AA: 4.5:1 for text, 3:1
+// for large text and shapes. The background is modelled the way the glass is
+// drawn: macOS's window material, the palette's tint over it, and (for
+// Vivid) each coloured bloom behind that. A colour that falls short is nudged
+// toward the palette's text colour just far enough to pass, so palettes keep
+// their look and only the parts people read change.
+
+struct RGB: Equatable {
+    var r, g, b: Double
+
+    init(_ r: Double, _ g: Double, _ b: Double) { self.r = r; self.g = g; self.b = b }
+
+    init(hex: String) {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        var v: UInt64 = 0
+        Scanner(string: String(s.prefix(6))).scanHexInt64(&v)
+        self.init(Double((v >> 16) & 0xFF) / 255, Double((v >> 8) & 0xFF) / 255, Double(v & 0xFF) / 255)
+    }
+
+    func mixed(with other: RGB, _ t: Double) -> RGB {
+        RGB(r + (other.r - r) * t, g + (other.g - g) * t, b + (other.b - b) * t)
+    }
+
+    var luminance: Double {
+        func f(_ v: Double) -> Double { v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+    }
+
+    func contrast(with other: RGB) -> Double {
+        let a = luminance, b = other.luminance
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
+    var color: Color { Color(.sRGB, red: r, green: g, blue: b, opacity: 1) }
+
+    static let ink = RGB(hex: "#141416")
+    static let white = RGB(1, 1, 1)
+}
+
+/// What a filled accent button is drawn with: its colours and a label colour
+/// that reads on all of them.
+struct ButtonFill {
+    var stops: [Color]
+    var label: Color
+    var glow: Color
+}
+
+extension AppTheme {
+    /// The backgrounds text sits on, lightest and darkest cases included.
+    var contrastBackgrounds: [RGB] {
+        let base = isDark ? RGB(hex: "#2B2B2E") : RGB(hex: "#ECECEE")
+        let tinted = base.mixed(with: RGB(hex: tint), tintOpacity)
+        guard let backdrop else { return [tinted] }
+        let bloomed = backdrop.map {
+            base.mixed(with: RGB(hex: $0), isDark ? 0.55 : 0.35).mixed(with: RGB(hex: tint), tintOpacity)
+        }
+        return bloomed + [tinted]
+    }
+
+    private func worstContrast(_ c: RGB) -> Double {
+        contrastBackgrounds.map { c.contrast(with: $0) }.min() ?? 21
+    }
+
+    /// The colour, or the nearest one toward the text colour that reaches
+    /// `minimum` contrast on this palette's backgrounds.
+    func readable(_ hex: String, minimum: Double = 4.5) -> RGB {
+        let start = RGB(hex: hex), toward = RGB(hex: textHex)
+        var t = 0.0
+        var c = start
+        while worstContrast(c) < minimum && t < 1 {
+            t += 0.04
+            c = start.mixed(with: toward, min(t, 1))
+        }
+        return c
+    }
+
+    private func accentHex(for phase: Phase) -> String {
+        switch phase {
+        case .shortBreak, .longBreak: return breakHex
+        case .complete: return doneHex ?? focusHex
+        case .idle, .focus: return focusHex
+        }
+    }
+
+    /// Accent-coloured text (the phase label, "Session complete"), at 4.5:1.
+    func accentText(for phase: Phase) -> Color {
+        highContrast ? text : readable(accentHex(for: phase)).color
+    }
+
+    /// Accent-coloured shapes that carry meaning (the progress bar), at 3:1.
+    func accentShape(for phase: Phase) -> Color {
+        readable(accentHex(for: phase), minimum: 3).color
+    }
+
+    /// The Start/Pause button: the palette's gradient or accent, with ink or
+    /// white text, whichever reads better. If neither reaches 4.5:1 on every
+    /// colour of the button, the colours are eased lighter (for ink) or darker
+    /// (for white) until it does.
+    func buttonFill(for phase: Phase) -> ButtonFill {
+        let gradient: [String]?
+        switch phase {
+        case .shortBreak, .longBreak: gradient = breakGradient
+        case .idle, .focus: gradient = focusGradient
+        case .complete: gradient = nil
+        }
+        let accent = RGB(hex: accentHex(for: phase))
+        var stops: [RGB] = gradient.map { Array($0.dropLast()).map(RGB.init(hex:)) }
+            ?? [accent, accent.mixed(with: contrastBackgrounds.last!, 0.22)]
+
+        func worst(_ label: RGB) -> Double { stops.map { label.contrast(with: $0) }.min() ?? 21 }
+        let label = worst(.ink) >= worst(.white) ? RGB.ink : RGB.white
+        let toward = label == .ink ? RGB.white : RGB.ink
+        var t = 0.0
+        let original = stops
+        while worst(label) < 4.5 && t < 0.6 {
+            t += 0.03
+            stops = original.map { $0.mixed(with: toward, t) }
+        }
+        return ButtonFill(stops: stops.map(\.color), label: label.color, glow: accent.color)
     }
 }
 

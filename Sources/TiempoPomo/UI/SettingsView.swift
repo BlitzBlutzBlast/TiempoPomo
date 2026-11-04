@@ -251,6 +251,11 @@ struct SettingsView: View {
                     ForEach(AppSettings.MenuBarStyle.allCases) { Text($0.label).tag($0) }
                 }
                 .disabled(!settings.showMenuBarTimer)
+                Toggle(isOn: $settings.hideDockIconWhenClosed) {
+                    Text("Hide from the Dock when the window is closed")
+                    Text("Tiempo Pomo keeps running in the menu bar. It comes back to the Dock when you open its window.")
+                }
+                .disabled(!settings.showMenuBarTimer)
                 Toggle("Keep window on top of other apps", isOn: $settings.floatOnTop)
                 Toggle(isOn: Binding(
                     get: { settings.showMiniTimer },

@@ -45,7 +45,7 @@ struct TimerDial: View {
             Label(phase.label.uppercased(), systemImage: phase.symbol)
                 .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
                 .tracking(1.4)
-                .foregroundStyle(accent)
+                .foregroundStyle(theme.accentText(for: phase == .idle ? .focus : phase))
             Text(Format.clock(TimeInterval(countdown.seconds)))
                 .font(.system(size: 60, weight: .light, design: theme.fontDesign))
                 .monospacedDigit()
@@ -67,7 +67,7 @@ struct TimerDial: View {
         VStack(spacing: 8) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 30))
-                .foregroundStyle(accent)
+                .foregroundStyle(theme.accentShape(for: .complete))
             Text("Session complete")
                 .font(.system(size: 20, weight: .semibold, design: theme.fontDesign))
                 .foregroundStyle(theme.text)
@@ -203,22 +203,21 @@ struct CardHeading: View {
 /// The main "Start Timer" capsule.
 struct AccentButtonStyle: ButtonStyle {
     let theme: AppTheme
-    let accent: Color
-    /// More than two colours: the button carries the palette's gradient.
-    var colors: [Color] = []
+    /// Colours and a label colour checked for contrast; see `AppTheme.buttonFill`.
+    let fill: ButtonFill
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 15, weight: .semibold, design: theme.fontDesign))
-            .foregroundStyle(theme.onAccent)
+            .foregroundStyle(fill.label)
             .padding(.horizontal, 30)
             .padding(.vertical, 12)
             .background(
-                Capsule().fill(colors.count > 2
-                    ? LinearGradient(colors: Array(colors.dropLast()), startPoint: .leading, endPoint: .trailing)
-                    : LinearGradient(colors: [accent, accent.opacity(0.78)], startPoint: .top, endPoint: .bottom))
+                Capsule().fill(LinearGradient(colors: fill.stops,
+                                              startPoint: fill.stops.count > 2 ? .leading : .top,
+                                              endPoint: fill.stops.count > 2 ? .trailing : .bottom))
             )
-            .shadow(color: accent.opacity(configuration.isPressed ? 0.2 : 0.45), radius: 12, y: 4)
+            .shadow(color: fill.glow.opacity(configuration.isPressed ? 0.2 : 0.45), radius: 12, y: 4)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }

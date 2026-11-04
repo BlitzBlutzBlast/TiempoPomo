@@ -25,6 +25,7 @@ final class AppSettings: ObservableObject {
         static let autoStartFocus = "autoStartFocus"
         static let showMenuBarTimer = "showMenuBarTimer"
         static let floatOnTop = "floatOnTop"
+        static let hideDockIconWhenClosed = "hideDockIconWhenClosed"
         static let menuBarStyle = "menuBarStyle"
         static let themeID = "themeID"
     }
@@ -93,7 +94,14 @@ final class AppSettings: ObservableObject {
 
     @Published var autoStartBreaks: Bool = load(Key.autoStartBreaks, true) { didSet { store(autoStartBreaks, Key.autoStartBreaks) } }
     @Published var autoStartFocus: Bool = load(Key.autoStartFocus, true) { didSet { store(autoStartFocus, Key.autoStartFocus) } }
-    @Published var showMenuBarTimer: Bool = load(Key.showMenuBarTimer, true) { didSet { store(showMenuBarTimer, Key.showMenuBarTimer) } }
+    @Published var showMenuBarTimer: Bool = load(Key.showMenuBarTimer, true) {
+        didSet { store(showMenuBarTimer, Key.showMenuBarTimer); AppDelegate.updateDockIcon() }
+    }
+    /// With the window closed, leave the Dock and live in the menu bar only.
+    /// Needs the menu bar timer, or there'd be no way back to the app.
+    @Published var hideDockIconWhenClosed: Bool = load(Key.hideDockIconWhenClosed, true) {
+        didSet { store(hideDockIconWhenClosed, Key.hideDockIconWhenClosed); AppDelegate.updateDockIcon() }
+    }
     @Published var floatOnTop: Bool = load(Key.floatOnTop, false) { didSet { store(floatOnTop, Key.floatOnTop) } }
     /// Minutes by default: the menu bar item then redraws once a minute, not every second.
     @Published var menuBarStyle: MenuBarStyle = MenuBarStyle(rawValue: load(Key.menuBarStyle, MenuBarStyle.minutes.rawValue)) ?? .minutes {
