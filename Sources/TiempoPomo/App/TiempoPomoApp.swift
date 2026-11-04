@@ -135,9 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shows the Dock icon while a window is open, and hides it once the
     /// last one closes if "Hide from the Dock" is on.
     @MainActor static func updateDockIcon(ignoring closing: NSWindow? = nil) {
-        let defaults = UserDefaults.standard
-        let menuBar = defaults.object(forKey: AppSettings.Key.showMenuBarTimer) as? Bool ?? true
-        let hide = defaults.object(forKey: AppSettings.Key.hideDockIconWhenClosed) as? Bool ?? true
+        let menuBar = AppSettings.saved(AppSettings.Key.showMenuBarTimer, true)
+        let hide = AppSettings.saved(AppSettings.Key.hideDockIconWhenClosed, true)
         let wanted: NSApplication.ActivationPolicy =
             menuBar && hide && !hasAppWindow(ignoring: closing) ? .accessory : .regular
         guard NSApp.activationPolicy() != wanted else { return }
@@ -151,6 +150,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// With the menu bar timer on, closing the window keeps the timer running.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        !(UserDefaults.standard.object(forKey: AppSettings.Key.showMenuBarTimer) as? Bool ?? true)
+        !AppSettings.saved(AppSettings.Key.showMenuBarTimer, true)
     }
 }

@@ -17,7 +17,7 @@ final class PresetStore: ObservableObject {
 
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.presetsKey),
-           let decoded = try? JSONDecoder().decode([SessionPreset].self, from: data),
+           let decoded = try? JSONDecoder().decode(LenientList<SessionPreset>.self, from: data).elements,
            !decoded.isEmpty {
             presets = decoded
         } else {

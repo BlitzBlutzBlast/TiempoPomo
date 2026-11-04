@@ -53,12 +53,21 @@ enum Sound {
     }
 
     static func displayName(_ key: String) -> String {
-        let name = key.split(separator: ":", maxSplits: 1).last.map(String.init) ?? key
+        let name = fileName(key)
         return source(of: key) == .custom ? (name as NSString).deletingPathExtension : name
     }
 
+    /// Each sound is read from disk once; every ring plays a cheap copy, so
+    /// repeats and overlapping chimes don't touch the disk again.
+    private static var loaded: [String: NSSound] = [:]
+
+    private static func sound(_ key: String) -> NSSound? {
+        if loaded[key] == nil { loaded[key] = load(key) }
+        return loaded[key]
+    }
+
     private static func load(_ key: String) -> NSSound? {
-        let name = key.split(separator: ":", maxSplits: 1).last.map(String.init) ?? key
+        let name = fileName(key)
         switch source(of: key) {
         case .app:
             guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Sounds") else { return nil }
@@ -66,7 +75,7 @@ enum Sound {
         case .custom:
             return NSSound(contentsOf: customDirectory.appendingPathComponent(name), byReference: true)
         case .system:
-            return NSSound(named: NSSound.Name(name))?.copy() as? NSSound
+            return NSSound(named: NSSound.Name(name))
         }
     }
 
@@ -80,12 +89,12 @@ enum Sound {
     /// mostly finished, so long sounds don't pile up and short ones don't
     /// blur together.
     static func play(_ key: String, volume: Double, times: Int = 1) {
-        guard volume > 0, let probe = load(key) else { return }
-        let gap = min(max(probe.duration * 0.8, 0.7), 3.0)
+        guard volume > 0, let original = sound(key) else { return }
+        let gap = min(max(original.duration * 0.8, 0.7), 3.0)
         for i in 0..<max(1, times) {
             let work = DispatchWorkItem {
                 MainActor.assumeIsolated {
-                    guard let sound = load(key) else { return }
+                    guard let sound = original.copy() as? NSSound else { return }
                     sound.volume = Float(volume)
                     playing.removeAll { !$0.isPlaying }
                     playing.append(sound)
@@ -150,11 +159,12 @@ enum Sound {
 
     static func deleteCustom(_ key: String) {
         guard source(of: key) == .custom else { return }
-        let file = customDirectory.appendingPathComponent(displayFileName(key))
-        try? FileManager.default.removeItem(at: file)
+        loaded[key] = nil
+        try? FileManager.default.removeItem(at: customDirectory.appendingPathComponent(fileName(key)))
     }
 
-    private static func displayFileName(_ key: String) -> String {
+    /// The part of a key after its "app:", "system:" or "custom:" prefix.
+    private static func fileName(_ key: String) -> String {
         key.split(separator: ":", maxSplits: 1).last.map(String.init) ?? key
     }
 

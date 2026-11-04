@@ -53,32 +53,26 @@ struct GrainOverlay: NSViewRepresentable {
     }
 }
 
-/// The window background: frosted glass under the theme's tint, with a soft
-/// glow of the current phase's colour behind the dial.
+/// The palette's glass, painted edge to edge as the bottom layer of a
+/// surface: frosted blur, the palette's tint at the surface's strength, its
+/// blooms if it has any, and during breaks a wash of the break colour so the
+/// phase reads from across the room.
 struct GlassBackground: View {
     let theme: AppTheme
-    var glow: Color? = nil
-    /// During breaks the whole window leans toward the break colour, so the
-    /// phase reads from across the room.
-    var breakTint: Color? = nil
+    let surface: GlassSurface
+    let phase: Phase
 
     var body: some View {
+        let wash = theme.colors(for: phase).wash
         ZStack {
             VisualEffectView(material: theme.material)
-            if let blooms = theme.backdrop {
-                BackdropBlooms(colors: blooms.map { Color(hex: $0) }, isDark: theme.isDark)
+            if let blooms = theme.blooms {
+                BackdropBlooms(colors: blooms, isDark: theme.isDark)
             }
-            theme.tintColor.opacity(theme.tintOpacity)
-            (breakTint ?? .clear)
+            theme.tint.opacity(theme.glassOpacity(surface))
+            (wash ?? .clear)
                 .opacity(theme.isDark ? 0.16 : 0.10)
-                .animation(.easeInOut(duration: 0.8), value: breakTint)
-            if let glow {
-                RadialGradient(
-                    colors: [glow.opacity(theme.isDark ? 0.24 : 0.14), glow.opacity(0)],
-                    center: .center, startRadius: 20, endRadius: 340
-                )
-                .animation(.easeInOut(duration: 0.8), value: glow)
-            }
+                .animation(.easeInOut(duration: 0.8), value: wash)
             GrainOverlay(opacity: theme.grain)
         }
         .ignoresSafeArea()
@@ -114,87 +108,142 @@ struct BackdropBlooms: View {
     }
 }
 
-/// Sets up the hosting window: draggable by its background, the theme's
-/// light or dark appearance, and floating above other apps when asked.
-struct WindowConfigurator: NSViewRepresentable {
-    let theme: AppTheme
-    let floats: Bool
+// MARK: - Window bridge
 
-    func makeNSView(context: Context) -> NSView { NSView() }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        let theme = theme, floats = floats
-        DispatchQueue.main.async {
-            guard let window = view.window else { return }
-            // Only touch what is about to change: setting the appearance
-            // again re-runs SwiftUI's update pass, which would call this
-            // again, forever.
-            if !window.isMovableByWindowBackground { window.isMovableByWindowBackground = true }
-            if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
-            if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
-            let appearanceName: NSAppearance.Name = theme.isDark ? .darkAqua : .aqua
-            if window.appearance?.name != appearanceName { window.appearance = NSAppearance(named: appearanceName) }
-            let level: NSWindow.Level = floats ? .floating : .normal
-            if window.level != level { window.level = level }
-            if !window.collectionBehavior.contains(.fullScreenNone) { window.collectionBehavior.insert(.fullScreenNone) }
-            let tint = NSColor(theme.tintColor)
-            if window.backgroundColor != tint { window.backgroundColor = tint }
-        }
+/// The one link between a SwiftUI surface and the AppKit window it sits in.
+/// It shapes the window (title bar, level, appearance, background), tells the
+/// countdown whether the window is on screen, and reports the window itself
+/// as it opens and closes. The main window, the popover and the mini timer
+/// each describe what they need with a `Style`.
+struct WindowBridge: NSViewRepresentable {
+    enum Chrome: Equatable {
+        /// A standard window with its title hidden and its glass reaching into
+        /// the title bar (the main window).
+        case hiddenTitle
+        /// No title bar at all; the window is exactly this size (the mini timer).
+        case borderless(CGSize)
+        /// Leave the window's frame alone (the menu bar popover).
+        case system
     }
-}
 
-extension View {
-    /// Glass background, appearance and accent for a sheet or settings pane.
-    func themedPane(_ theme: AppTheme) -> some View {
-        self
-            .scrollContentBackground(.hidden)
-            .background(GlassBackground(theme: theme))
-            .preferredColorScheme(theme.colorScheme)
-            .tint(theme.focus)
+    struct Style: Equatable {
+        var isDark: Bool
+        var chrome: Chrome
+        var floats = false
+        /// Show on every Space and beside full-screen apps.
+        var allSpaces = false
+        /// The window's own background, behind the glass; nil leaves it be.
+        var background: NSColor?
     }
-}
 
-/// Tells the countdown whether the window it sits in is on screen, so a
-/// closed, minimised or covered window stops redrawing every second.
-struct CountdownVisibility: NSViewRepresentable {
-    let countdown: Countdown
+    let style: Style
+    /// Counted as watching while the window is on screen.
+    var countdown: Countdown? = nil
+    /// Given the window when it appears, and nil when it closes.
+    var onWindow: ((NSWindow?) -> Void)? = nil
 
-    func makeNSView(context: Context) -> Reporter {
-        let v = Reporter()
+    func makeNSView(context: Context) -> BridgeView {
+        let v = BridgeView()
         v.countdown = countdown
+        v.onWindow = onWindow
+        v.style = style
         return v
     }
 
-    func updateNSView(_ v: Reporter, context: Context) {}
-
-    static func dismantleNSView(_ v: Reporter, coordinator: ()) {
-        v.report(false)
+    func updateNSView(_ v: BridgeView, context: Context) {
+        v.onWindow = onWindow
+        if v.style != style {
+            v.style = style
+            v.applyStyleSoon()
+        }
     }
 
-    final class Reporter: NSView {
+    static func dismantleNSView(_ v: BridgeView, coordinator: ()) {
+        v.reportVisible(false)
+    }
+
+    final class BridgeView: NSView {
+        var style: Style?
         weak var countdown: Countdown?
-        private var observers: [NSObjectProtocol] = []
+        var onWindow: ((NSWindow?) -> Void)?
+        // Only touched on the main thread; deinit just unregisters them.
+        nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             observers.forEach(NotificationCenter.default.removeObserver)
             observers = []
-            guard let window else { report(false); return }
+            guard let window else {
+                reportVisible(false)
+                return
+            }
             let center = NotificationCenter.default
             observers.append(center.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
-                                                object: window, queue: .main) { [weak self] _ in self?.update() })
+                                                object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reportVisible(window.occlusionState.contains(.visible)) }
+            })
             observers.append(center.addObserver(forName: NSWindow.willCloseNotification,
-                                                object: window, queue: .main) { [weak self] _ in self?.report(false) })
-            update()
+                                                object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.reportVisible(false)
+                    self?.onWindow?(nil)
+                }
+            })
+            reportVisible(window.occlusionState.contains(.visible))
+            let report = onWindow
+            DispatchQueue.main.async { report?(window) }
+            applyStyleSoon()
         }
 
-        private func update() {
-            report(window?.occlusionState.contains(.visible) ?? false)
+        func reportVisible(_ visible: Bool) {
+            countdown?.setVisible(visible, for: ObjectIdentifier(self))
         }
 
-        func report(_ visible: Bool) {
-            let id = ObjectIdentifier(self)
-            MainActor.assumeIsolated { countdown?.setVisible(visible, for: id) }
+        /// Applies the style on the next turn of the run loop, touching only
+        /// what differs: setting a window's appearance again re-runs SwiftUI's
+        /// update pass, which would call this again, forever.
+        func applyStyleSoon() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window, let style = self.style else { return }
+                Self.apply(style, to: window)
+            }
+        }
+
+        private static func apply(_ style: Style, to window: NSWindow) {
+            let name: NSAppearance.Name = style.isDark ? .darkAqua : .aqua
+            if window.appearance?.name != name { window.appearance = NSAppearance(named: name) }
+            let level: NSWindow.Level = style.floats ? .floating : .normal
+            if window.level != level { window.level = level }
+            if let background = style.background, window.backgroundColor != background {
+                window.backgroundColor = background
+            }
+            var behavior = window.collectionBehavior
+            if style.allSpaces { behavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary]) }
+
+            switch style.chrome {
+            case .hiddenTitle:
+                if !window.isMovableByWindowBackground { window.isMovableByWindowBackground = true }
+                if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
+                if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
+                behavior.insert(.fullScreenNone)
+            case .borderless(let size):
+                if window.styleMask.contains(.titled) {
+                    let frame = window.frame
+                    window.styleMask.remove(.titled)
+                    window.setFrame(NSRect(x: frame.minX, y: frame.maxY - size.height,
+                                           width: size.width, height: size.height), display: true)
+                }
+                for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                    if window.standardWindowButton(button)?.isHidden == false {
+                        window.standardWindowButton(button)?.isHidden = true
+                    }
+                }
+                if !window.isMovableByWindowBackground { window.isMovableByWindowBackground = true }
+                if window.isOpaque { window.isOpaque = false }
+            case .system:
+                break
+            }
+            if window.collectionBehavior != behavior { window.collectionBehavior = behavior }
         }
 
         deinit {

@@ -1,9 +1,83 @@
+import Combine
 import Foundation
 import SwiftUI
 
-/// Everything in Settings and App Colors, saved to UserDefaults as it changes.
+/// A value that can be saved in UserDefaults as-is.
+protocol DefaultsValue {
+    init?(defaultsObject: Any)
+    var defaultsObject: Any { get }
+}
+
+extension Bool: DefaultsValue {
+    init?(defaultsObject: Any) { guard let v = defaultsObject as? Bool else { return nil }; self = v }
+    var defaultsObject: Any { self }
+}
+extension Int: DefaultsValue {
+    init?(defaultsObject: Any) { guard let v = defaultsObject as? Int else { return nil }; self = v }
+    var defaultsObject: Any { self }
+}
+extension Double: DefaultsValue {
+    init?(defaultsObject: Any) { guard let v = defaultsObject as? Double else { return nil }; self = v }
+    var defaultsObject: Any { self }
+}
+extension String: DefaultsValue {
+    init?(defaultsObject: Any) { guard let v = defaultsObject as? String else { return nil }; self = v }
+    var defaultsObject: Any { self }
+}
+extension DefaultsValue where Self: RawRepresentable, RawValue: DefaultsValue {
+    init?(defaultsObject: Any) {
+        guard let raw = RawValue(defaultsObject: defaultsObject) else { return nil }
+        self.init(rawValue: raw)
+    }
+    var defaultsObject: Any { rawValue.defaultsObject }
+}
+
+/// A setting saved to UserDefaults the moment it changes, that also tells
+/// SwiftUI to redraw. One line per setting instead of three.
+@propertyWrapper
+struct Stored<Value: DefaultsValue> {
+    let key: String
+    private var value: Value
+    private let onChange: (@MainActor () -> Void)?
+
+    /// `normalize` cleans up values saved by older versions as they load.
+    init(wrappedValue fallback: Value, _ key: String,
+         normalize: (Value) -> Value = { $0 }, onChange: (@MainActor () -> Void)? = nil) {
+        self.key = key
+        self.onChange = onChange
+        let saved = UserDefaults.standard.object(forKey: key).flatMap(Value.init(defaultsObject:))
+        value = normalize(saved ?? fallback)
+    }
+
+    @available(*, unavailable, message: "Stored is only for properties of AppSettings")
+    var wrappedValue: Value {
+        get { fatalError() }
+        set { fatalError() }
+    }
+
+    @MainActor
+    static subscript(
+        _enclosingInstance settings: AppSettings,
+        wrapped _: ReferenceWritableKeyPath<AppSettings, Value>,
+        storage storageKeyPath: ReferenceWritableKeyPath<AppSettings, Stored>
+    ) -> Value {
+        get { settings[keyPath: storageKeyPath].value }
+        set {
+            settings.objectWillChange.send()
+            settings[keyPath: storageKeyPath].value = newValue
+            let stored = settings[keyPath: storageKeyPath]
+            UserDefaults.standard.set(newValue.defaultsObject, forKey: stored.key)
+            stored.onChange?()
+        }
+    }
+}
+
+/// Everything in Settings, saved to UserDefaults as it changes.
 @MainActor
 final class AppSettings: ObservableObject {
+    /// Every saved setting's key, in one place. Code that reads settings
+    /// outside this class (the app delegate, the notification delegate) uses
+    /// these through `AppSettings.saved`.
     enum Key {
         static let soundsEnabled = "soundsEnabled"
         static let volume = "volume"
@@ -30,33 +104,34 @@ final class AppSettings: ObservableObject {
         static let themeID = "themeID"
     }
 
-    nonisolated private static func load<T>(_ key: String, _ fallback: T) -> T {
-        UserDefaults.standard.object(forKey: key) as? T ?? fallback
+    /// Reads a saved setting from outside the main actor or before this class
+    /// exists, with the same default the property uses.
+    nonisolated static func saved<Value: DefaultsValue>(_ key: String, _ fallback: Value) -> Value {
+        UserDefaults.standard.object(forKey: key).flatMap(Value.init(defaultsObject:)) ?? fallback
     }
 
     /// Earlier versions saved macOS sounds by bare name ("Glass").
-    nonisolated private static func soundKey(_ raw: String) -> String {
+    nonisolated static func soundKey(_ raw: String) -> String {
         raw.contains(":") ? raw : "system:" + raw
-    }
-
-    private func store(_ value: Any, _ key: String) {
-        UserDefaults.standard.set(value, forKey: key)
     }
 
     // MARK: Sounds
 
-    @Published var soundsEnabled: Bool = load(Key.soundsEnabled, true) { didSet { store(soundsEnabled, Key.soundsEnabled) } }
-    @Published var volume: Double = load(Key.volume, 0.7) { didSet { store(volume, Key.volume) } }
+    static let defaultSounds = (focusEnd: "app:Singing Bowl", breakEnd: "app:Marimba Up",
+                                complete: "app:Rising Chimes", start: "app:Soft Bell")
+
+    @Stored(Key.soundsEnabled) var soundsEnabled = true
+    @Stored(Key.volume) var volume = 0.7
     /// How many times a chime rings, for when once is easy to miss.
-    @Published var chimeRepeats: Int = load(Key.chimeRepeats, 3) { didSet { store(chimeRepeats, Key.chimeRepeats) } }
+    @Stored(Key.chimeRepeats) var chimeRepeats = 3
     /// Focus round ends, break begins.
-    @Published var focusEndSound: String = soundKey(load(Key.focusEndSound, "app:Singing Bowl")) { didSet { store(focusEndSound, Key.focusEndSound) } }
+    @Stored(Key.focusEndSound, normalize: AppSettings.soundKey) var focusEndSound = AppSettings.defaultSounds.focusEnd
     /// Break ends, the next focus round begins.
-    @Published var breakEndSound: String = soundKey(load(Key.breakEndSound, "app:Marimba Up")) { didSet { store(breakEndSound, Key.breakEndSound) } }
+    @Stored(Key.breakEndSound, normalize: AppSettings.soundKey) var breakEndSound = AppSettings.defaultSounds.breakEnd
     /// The last round of the session is done.
-    @Published var completeSound: String = soundKey(load(Key.completeSound, "app:Rising Chimes")) { didSet { store(completeSound, Key.completeSound) } }
-    @Published var playStartSound: Bool = load(Key.playStartSound, true) { didSet { store(playStartSound, Key.playStartSound) } }
-    @Published var startSound: String = soundKey(load(Key.startSound, "app:Soft Bell")) { didSet { store(startSound, Key.startSound) } }
+    @Stored(Key.completeSound, normalize: AppSettings.soundKey) var completeSound = AppSettings.defaultSounds.complete
+    @Stored(Key.playStartSound) var playStartSound = true
+    @Stored(Key.startSound, normalize: AppSettings.soundKey) var startSound = AppSettings.defaultSounds.start
     /// Sound files the user added, as "custom:" keys.
     @Published private(set) var customSounds: [String] = Sound.customKeys()
 
@@ -70,45 +145,45 @@ final class AppSettings: ObservableObject {
         return problems
     }
 
-    /// Removes an added sound; any chime that used it goes back to the default.
+    /// Removes an added sound; any chime that used it goes back to its default.
     func deleteCustomSound(_ key: String) {
         Sound.deleteCustom(key)
         customSounds = Sound.customKeys()
-        if focusEndSound == key { focusEndSound = "app:Singing Bowl" }
-        if breakEndSound == key { breakEndSound = "app:Marimba Up" }
-        if completeSound == key { completeSound = "app:Rising Chimes" }
-        if startSound == key { startSound = "app:Soft Bell" }
+        if focusEndSound == key { focusEndSound = Self.defaultSounds.focusEnd }
+        if breakEndSound == key { breakEndSound = Self.defaultSounds.breakEnd }
+        if completeSound == key { completeSound = Self.defaultSounds.complete }
+        if startSound == key { startSound = Self.defaultSounds.start }
+    }
+
+    /// Rings a chime the set number of times; `once` for the start sound.
+    func chime(_ key: String, once: Bool = false) {
+        guard soundsEnabled else { return }
+        Sound.play(key, volume: volume, times: once ? 1 : chimeRepeats)
     }
 
     // MARK: Notifications
 
-    @Published var notificationsEnabled: Bool = load(Key.notificationsEnabled, true) { didSet { store(notificationsEnabled, Key.notificationsEnabled) } }
-    @Published var notifyFocusEnd: Bool = load(Key.notifyFocusEnd, true) { didSet { store(notifyFocusEnd, Key.notifyFocusEnd) } }
-    @Published var notifyBreakEnd: Bool = load(Key.notifyBreakEnd, true) { didSet { store(notifyBreakEnd, Key.notifyBreakEnd) } }
-    @Published var notifyComplete: Bool = load(Key.notifyComplete, true) { didSet { store(notifyComplete, Key.notifyComplete) } }
-    @Published var notifyOnlyInBackground: Bool = load(Key.notifyOnlyInBackground, false) { didSet { store(notifyOnlyInBackground, Key.notifyOnlyInBackground) } }
+    @Stored(Key.notificationsEnabled) var notificationsEnabled = true
+    @Stored(Key.notifyFocusEnd) var notifyFocusEnd = true
+    @Stored(Key.notifyBreakEnd) var notifyBreakEnd = true
+    @Stored(Key.notifyComplete) var notifyComplete = true
+    @Stored(Key.notifyOnlyInBackground) var notifyOnlyInBackground = false
     /// The banner's own system sound, on top of Tiempo Pomo's chime.
-    @Published var notificationSound: Bool = load(Key.notificationSound, false) { didSet { store(notificationSound, Key.notificationSound) } }
+    @Stored(Key.notificationSound) var notificationSound = false
 
     // MARK: General
 
-    @Published var autoStartBreaks: Bool = load(Key.autoStartBreaks, true) { didSet { store(autoStartBreaks, Key.autoStartBreaks) } }
-    @Published var autoStartFocus: Bool = load(Key.autoStartFocus, true) { didSet { store(autoStartFocus, Key.autoStartFocus) } }
-    @Published var showMenuBarTimer: Bool = load(Key.showMenuBarTimer, true) {
-        didSet { store(showMenuBarTimer, Key.showMenuBarTimer); AppDelegate.updateDockIcon() }
-    }
+    @Stored(Key.autoStartBreaks) var autoStartBreaks = true
+    @Stored(Key.autoStartFocus) var autoStartFocus = true
+    @Stored(Key.showMenuBarTimer, onChange: { AppDelegate.updateDockIcon() }) var showMenuBarTimer = true
     /// With the window closed, leave the Dock and live in the menu bar only.
     /// Needs the menu bar timer, or there'd be no way back to the app.
-    @Published var hideDockIconWhenClosed: Bool = load(Key.hideDockIconWhenClosed, true) {
-        didSet { store(hideDockIconWhenClosed, Key.hideDockIconWhenClosed); AppDelegate.updateDockIcon() }
-    }
-    @Published var floatOnTop: Bool = load(Key.floatOnTop, false) { didSet { store(floatOnTop, Key.floatOnTop) } }
+    @Stored(Key.hideDockIconWhenClosed, onChange: { AppDelegate.updateDockIcon() }) var hideDockIconWhenClosed = true
+    @Stored(Key.floatOnTop) var floatOnTop = false
     /// Minutes by default: the menu bar item then redraws once a minute, not every second.
-    @Published var menuBarStyle: MenuBarStyle = MenuBarStyle(rawValue: load(Key.menuBarStyle, MenuBarStyle.minutes.rawValue)) ?? .minutes {
-        didSet { store(menuBarStyle.rawValue, Key.menuBarStyle) }
-    }
+    @Stored(Key.menuBarStyle) var menuBarStyle = MenuBarStyle.minutes
 
-    enum MenuBarStyle: String, CaseIterable, Identifiable {
+    enum MenuBarStyle: String, CaseIterable, Identifiable, DefaultsValue {
         case minutes, seconds, icon
         var id: String { rawValue }
         var label: String {
@@ -131,15 +206,12 @@ final class AppSettings: ObservableObject {
         case sessions, appearance, sounds, notifications, general
     }
 
-    // MARK: Colors
+    // MARK: Palette
 
-    @Published var themeID: String = load(Key.themeID, AppTheme.dusk.id) { didSet { store(themeID, Key.themeID) } }
+    @Stored(Key.themeID) var themeID = Palette.dusk.id
 
-    var theme: AppTheme { AppTheme.all.first { $0.id == themeID } ?? .dusk }
-
-    /// Rings a chime the set number of times; `once` for the start sound.
-    func chime(_ key: String, once: Bool = false) {
-        guard soundsEnabled else { return }
-        Sound.play(key, volume: volume, times: once ? 1 : chimeRepeats)
-    }
+    var palette: Palette { Palette.named(themeID) }
+    /// The palette resolved without the Mac's accessibility adjustments, for
+    /// places that only need its accent (Settings' controls).
+    var theme: AppTheme { AppTheme.resolve(palette) }
 }

@@ -36,7 +36,7 @@ struct SettingsView: View {
         }
         .frame(width: 640, height: 520)
         .preferredColorScheme(theme.colorScheme)
-        .tint(theme.focus)
+        .tint(theme.colors(for: .focus).shape)
         .task { await notifier.refreshStatus() }
     }
 

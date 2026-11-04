@@ -30,8 +30,53 @@ struct SessionPreset: Codable, Identifiable, Hashable {
         return total
     }
 
-    var roundsText: String {
-        repeatForever ? "repeats until stopped" : "× \(rounds) round\(rounds == 1 ? "" : "s")"
+}
+
+/// Sessions saved by an older or newer version load even when fields are
+/// missing: anything absent takes its default, so adding a field to a session
+/// never wipes the ones already saved.
+extension SessionPreset {
+    enum CodingKeys: String, CodingKey {
+        case id, name, symbol, focusMinutes, breakMinutes, rounds, repeatForever, longBreakMinutes, longBreakEvery
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            name: try c.decodeIfPresent(String.self, forKey: .name) ?? "Session",
+            symbol: try c.decodeIfPresent(String.self, forKey: .symbol) ?? "timer",
+            focusMinutes: max(1, try c.decodeIfPresent(Int.self, forKey: .focusMinutes) ?? 25),
+            breakMinutes: max(1, try c.decodeIfPresent(Int.self, forKey: .breakMinutes) ?? 5),
+            rounds: max(1, try c.decodeIfPresent(Int.self, forKey: .rounds) ?? 4),
+            repeatForever: try c.decodeIfPresent(Bool.self, forKey: .repeatForever) ?? false,
+            longBreakMinutes: max(0, try c.decodeIfPresent(Int.self, forKey: .longBreakMinutes) ?? 0),
+            longBreakEvery: max(1, try c.decodeIfPresent(Int.self, forKey: .longBreakEvery) ?? 4)
+        )
+    }
+}
+
+/// Decodes a list where one unreadable entry is skipped instead of failing
+/// the whole list.
+struct LenientList<Element: Decodable>: Decodable {
+    let elements: [Element]
+
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        var elements: [Element] = []
+        while !container.isAtEnd {
+            if let element = try? container.decode(Element.self) {
+                elements.append(element)
+            } else {
+                _ = try? container.decode(Skip.self)
+            }
+        }
+        self.elements = elements
+    }
+
+    /// Accepts any value, so the list moves past an entry it can't read.
+    private struct Skip: Decodable {
+        init(from decoder: Decoder) {}
     }
 }
 

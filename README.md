@@ -50,8 +50,12 @@ Tiempo Pomo never goes online. That's enforced, not just promised:
 
 ```bash
 ./build.sh 0.1.0          # → dist/Tiempo Pomo.app, TiempoPomo-0.1.0.dmg and TiempoPomo-0.1.0.pkg
+swift test --disable-xctest   # the session schedule, saved-session loading, formatting, and every palette's contrast
+./release.sh 0.1.0        # test, build, tag, push and publish this Mac's build; CI then swaps in the universal one
 ```
 
-Swift package, no Xcode project and no dependencies. Needs macOS 14+ and the Swift toolchain (Xcode or the Command Line Tools). Pushing a `v*` tag makes GitHub Actions build a universal DMG and attach it to a release.
+Swift package, no Xcode project and no dependencies. Needs macOS 14+ and the Swift toolchain (Xcode or the Command Line Tools). Pushing a `v*` tag makes GitHub Actions run the tests, build a universal DMG and attach it to a release.
+
+The look lives in two files: `UI/Palette.swift` holds each palette's raw colours, and `UI/Design.swift` the type scale, spacing and corner sizes every surface shares. Palettes are resolved once into ready-to-draw colour sets (`AppTheme`), nudged where needed until they pass WCAG AA on their own glass; a test fails the build if any palette slips below it.
 
 `swift scripts/make_icon.swift <dir>` redraws the icon as vector geometry (each small size drawn separately) into `<dir>/AppIcon.iconset`; `iconutil -c icns <dir>/AppIcon.iconset -o Resources/AppIcon.icns` packs it. `scripts/make_sounds.swift Resources/Sounds` re-synthesises the built-in sound pack. Every sound is generated from sine partials, so it's all original.

@@ -17,77 +17,46 @@ struct MainView: View {
 
     /// The window is this size and can't be resized.
     static let windowSize = CGSize(width: 480, height: 600)
-    /// Space between the window's edges and anything along them.
-    static let margin: CGFloat = 28
 
     var body: some View {
-        Themed(settings.theme) { theme in
+        Themed(settings.palette) { theme in
             content(theme: theme)
         }
     }
 
     private func content(theme: AppTheme) -> some View {
-        let accent = theme.accent(for: engine.displayPhase)
-
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             header(theme: theme)
-
-            Spacer(minLength: 8)
-
-            TimerDial(
-                countdown: engine.countdown,
-                theme: theme, accent: accent,
-                ringColors: theme.ringColors(for: engine.displayPhase),
-                phase: engine.phase,
-                rounds: engine.plan.rounds, round: engine.round,
-                repeats: engine.plan.repeatForever,
-                next: engine.upNext.map { "Next: \($0)" },
-                summary: engine.sessionSummary,
-                roundText: engine.roundText
-            )
-            .anchorPreference(key: DialBoundsKey.self, value: .bounds) { $0 }
-
-            sessionRow(theme: theme)
-                .padding(.top, 20)
-
-            controls(theme: theme, accent: accent)
-                .padding(.top, 22)
-
+            Spacer(minLength: Space.s)
+            TimerDial(countdown: engine.countdown, theme: theme)
+                .anchorPreference(key: DialBoundsKey.self, value: .bounds) { $0 }
+            HStack(spacing: Space.s) {
+                SessionMenu(theme: theme) { open(.sessions) }
+                timingButton(theme: theme)
+            }
+            .padding(.top, Space.xl)
+            TimerControls(theme: theme, spaceStartsAndPauses: true)
+                .padding(.top, Space.xl)
             spaceHint(theme: theme)
-                .padding(.top, 10)
-
-            Spacer(minLength: 8)
-
+                .padding(.top, Space.s + Space.xxs)
+            Spacer(minLength: Space.s)
             footer(theme: theme)
         }
         .ignoresSafeArea(edges: .top)
-        .padding(.top, 6)
+        .padding(.top, Space.s - 2)
         .frame(width: Self.windowSize.width, height: Self.windowSize.height)
-        // The glow sits behind the dial wherever the layout puts it.
         .backgroundPreferenceValue(DialBoundsKey.self) { anchor in
-            GeometryReader { proxy in
-                if let anchor {
-                    let rect = proxy[anchor]
-                    let glow = theme.isGradient ? (theme.ringColors(for: engine.displayPhase).dropFirst().first ?? accent) : accent
-                    RadialGradient(
-                        colors: [glow.opacity(theme.isDark ? 0.24 : 0.14), glow.opacity(0)],
-                        center: UnitPoint(x: rect.midX / max(proxy.size.width, 1),
-                                          y: rect.midY / max(proxy.size.height, 1)),
-                        startRadius: 20, endRadius: 300
-                    )
-                    .animation(.easeInOut(duration: 0.8), value: glow)
-                }
-            }
+            DialGlow(anchor: anchor, color: theme.colors(for: engine.displayPhase).glow, isDark: theme.isDark)
         }
-        .background(GlassBackground(theme: theme, breakTint: engine.phase.isBreak ? theme.rest : nil))
-        .background(WindowConfigurator(theme: theme, floats: settings.floatOnTop))
-        .background(CountdownVisibility(countdown: engine.countdown))
+        .background(GlassBackground(theme: theme, surface: .window, phase: engine.phase))
+        .background(WindowBridge(
+            style: .init(isDark: theme.isDark, chrome: .hiddenTitle, floats: settings.floatOnTop,
+                         background: NSColor(theme.tint)),
+            countdown: engine.countdown))
         .preferredColorScheme(theme.colorScheme)
-        .tint(accent)
+        .tint(theme.colors(for: engine.displayPhase).shape)
         .animation(.easeInOut(duration: 0.35), value: engine.phase)
-        .onChange(of: store.selected) { _, new in
-            engine.load(new)
-        }
+        .onChange(of: store.selected) { _, new in engine.load(new) }
         .task { await notifier.requestIfNeeded() }
     }
 
@@ -95,39 +64,34 @@ struct MainView: View {
 
     private func header(theme: AppTheme) -> some View {
         Text("Tiempo Pomo")
-            .font(.system(size: 15, weight: .semibold, design: theme.fontDesign))
+            .textRole(.headline, theme)
             .foregroundStyle(theme.text.opacity(0.85))
             .frame(maxWidth: .infinity)
-            .frame(height: 28)
-            .padding(.top, 2)
+            .frame(height: Space.xxl)
+            .padding(.top, Space.xxs)
             .overlay(alignment: .trailing) {
                 Button {
                     if settings.showMiniTimer { dismissWindow(id: "mini") } else { openWindow(id: "mini") }
                 } label: {
                     Image(systemName: settings.showMiniTimer ? "pip.exit" : "pip.enter")
                 }
-                .buttonStyle(FooterButtonStyle(theme: theme))
+                .buttonStyle(QuietButtonStyle(theme: theme))
                 .help(settings.showMiniTimer ? "Hide the mini timer" : "Mini timer: a small window that stays on top")
                 .accessibilityLabel(settings.showMiniTimer ? "Hide mini timer" : "Show mini timer")
-                .padding(.trailing, Self.margin - FooterButtonStyle.horizontalPadding)
-                .padding(.top, 2)
+                .padding(.trailing, Space.xxl - QuietButtonStyle.horizontalPadding)
+                .padding(.top, Space.xxs)
             }
     }
 
     private func footer(theme: AppTheme) -> some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: "sun.max")
-                Text("Today  \(Format.minutes(engine.todayFocusMinutes)) · \(engine.todayRounds) round\(engine.todayRounds == 1 ? "" : "s")")
-                    .monospacedDigit()
-            }
-            .font(.system(size: 12, weight: .medium, design: theme.fontDesign))
-            .foregroundStyle(theme.secondary)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Today: \(Format.minutes(engine.todayFocusMinutes)) focused, \(engine.todayRounds) rounds")
-
+        HStack(spacing: Space.xs) {
+            Label("Today  \(Format.minutes(engine.todayFocusMinutes)) · \(engine.todayRounds) round\(engine.todayRounds == 1 ? "" : "s")",
+                  systemImage: "sun.max")
+                .textRole(.caption, theme)
+                .monospacedDigit()
+                .foregroundStyle(theme.secondary)
+                .accessibilityLabel("Today: \(Format.minutes(engine.todayFocusMinutes)) focused, \(engine.todayRounds) rounds")
             Spacer()
-
             Button { open(.sessions) } label: { Image(systemName: "square.stack.3d.up") }
                 .help("Sessions")
                 .accessibilityLabel("Sessions")
@@ -135,10 +99,10 @@ struct MainView: View {
                 .help("Settings  ⌘,")
                 .accessibilityLabel("Settings")
         }
-        .buttonStyle(FooterButtonStyle(theme: theme))
-        .padding(.leading, Self.margin)
-        .padding(.trailing, Self.margin - FooterButtonStyle.horizontalPadding)
-        .padding(.bottom, 20)
+        .buttonStyle(QuietButtonStyle(theme: theme))
+        .padding(.leading, Space.xxl)
+        .padding(.trailing, Space.xxl - QuietButtonStyle.horizontalPadding)
+        .padding(.bottom, Space.xl)
     }
 
     private func open(_ tab: AppSettings.SettingsTab) {
@@ -147,121 +111,65 @@ struct MainView: View {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // MARK: Session and timing
+    // MARK: Timing and the Space hint
 
-    private func sessionRow(theme: AppTheme) -> some View {
+    private func timingButton(theme: AppTheme) -> some View {
         let plan = engine.plan
-        let locked = !engine.isIdle
-        return HStack(spacing: 8) {
-            Menu {
-                ForEach(store.presets) { preset in
-                    Button {
-                        store.selectedID = preset.id
-                        engine.load(preset)
-                    } label: {
-                        Label(preset.name, systemImage: preset.id == store.selectedID ? "checkmark" : preset.symbol)
-                    }
-                }
-                Divider()
-                Button("Edit Sessions…") { open(.sessions) }
-            } label: {
-                PillLabel(theme: theme) {
-                    Image(systemName: plan.symbol)
-                    Text(engine.isCustomized ? "\(plan.name) (edited)" : plan.name)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .opacity(0.7)
-                }
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .focusEffectDisabled()
-            .fixedSize()
-            .accessibilityLabel("Session: \(plan.name)")
-
-            Button {
-                showTiming = true
-            } label: {
-                PillLabel(theme: theme) {
-                    Text("\(plan.focusMinutes) / \(plan.breakMinutes) min")
-                        .monospacedDigit()
-                    Text(plan.repeatForever ? "· ∞" : "· ×\(plan.rounds)")
-                        .opacity(0.75)
-                }
-            }
-            .buttonStyle(.plain)
-            .focusEffectDisabled()
-            .popover(isPresented: $showTiming, arrowEdge: .bottom) {
-                AdjustSessionView()
-            }
-            .help("Change focus, break and rounds for this run")
-            .accessibilityLabel("Timing: \(plan.focusMinutes) minutes focus, \(plan.breakMinutes) minutes break, \(plan.repeatForever ? "repeating" : "\(plan.rounds) rounds"). Edit")
-        }
-        .disabled(locked)
-        .help(locked ? "Reset the timer to change the session" : "")
-    }
-
-    // MARK: Controls
-
-    @ViewBuilder
-    private func controls(theme: AppTheme, accent: Color) -> some View {
-        HStack(spacing: 14) {
-            if !engine.isIdle {
-                Button(action: engine.reset) { Image(systemName: "arrow.counterclockwise") }
-                    .buttonStyle(CircleIconButtonStyle(theme: theme))
-                    .help("Reset  ⌘R")
-                    .accessibilityLabel("Reset")
-                    .transition(.scale.combined(with: .opacity))
-            }
-
-            Button(action: engine.toggle) {
-                Text(mainButtonTitle)
-                    .frame(minWidth: 120)
-            }
-            .buttonStyle(AccentButtonStyle(theme: theme, fill: theme.buttonFill(for: engine.displayPhase)))
-            .keyboardShortcut(.space, modifiers: [])
-
-            if !engine.isIdle {
-                Button(action: engine.skip) { Image(systemName: "forward.end") }
-                    .buttonStyle(CircleIconButtonStyle(theme: theme))
-                    .help(engine.phase.isBreak ? "Skip break  ⌘→" : "Skip to break  ⌘→")
-                    .accessibilityLabel(engine.phase.isBreak ? "Skip break" : "Skip to break")
-                    .transition(.scale.combined(with: .opacity))
+        return Button {
+            showTiming = true
+        } label: {
+            PillLabel(theme: theme) {
+                Text("\(plan.focusMinutes) / \(plan.breakMinutes) min").monospacedDigit()
+                Text(plan.repeatForever ? "· ∞" : "· ×\(plan.rounds)").opacity(0.75)
             }
         }
-        .animation(.spring(duration: 0.3), value: engine.isIdle)
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+        .popover(isPresented: $showTiming, arrowEdge: .bottom) { AdjustSessionView() }
+        .disabled(!engine.isIdle)
+        .help(engine.isIdle ? "Change focus, break and rounds for this run" : "Reset the timer to change the timing")
+        .accessibilityLabel("Timing: \(plan.focusMinutes) minutes focus, \(plan.breakMinutes) minutes break, \(plan.repeatForever ? "repeating" : "\(plan.rounds) rounds"). Edit")
     }
 
     private func spaceHint(theme: AppTheme) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: Space.xs + 1) {
             Text("Space")
-                .font(.system(size: 10, weight: .semibold, design: theme.fontDesign))
-                .padding(.horizontal, 5)
+                .textRole(.keycap, theme)
+                .padding(.horizontal, Space.xs + 1)
                 .padding(.vertical, 1.5)
-                .background(RoundedRectangle(cornerRadius: 4).stroke(theme.secondary.opacity(0.6)))
+                .background(RoundedRectangle(cornerRadius: Radius.small - 2).stroke(theme.secondary.opacity(0.6)))
             Text(engine.isRunning ? "to pause" : "to start")
-                .font(.system(size: 11, design: theme.fontDesign))
+                .textRole(.small, theme)
         }
         .foregroundStyle(theme.secondary)
         .accessibilityHidden(true)
     }
+}
 
-    private var mainButtonTitle: String {
-        switch engine.phase {
-        case .idle: return "Start"
-        case .complete: return "Start Again"
-        default:
-            if engine.isRunning { return "Pause" }
-            // Paused by hand, or waiting because auto-start is off.
-            return engine.phaseStarted ? "Resume" : "Start \(engine.phase.label)"
+/// The soft light behind the dial, wherever the layout puts it.
+private struct DialGlow: View {
+    let anchor: Anchor<CGRect>?
+    let color: Color
+    let isDark: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let anchor {
+                let rect = proxy[anchor]
+                RadialGradient(
+                    colors: [color.opacity(isDark ? 0.24 : 0.14), color.opacity(0)],
+                    center: UnitPoint(x: rect.midX / max(proxy.size.width, 1),
+                                      y: rect.midY / max(proxy.size.height, 1)),
+                    startRadius: 20, endRadius: 300
+                )
+                .animation(.easeInOut(duration: 0.8), value: color)
+            }
         }
     }
 }
 
 private struct DialBoundsKey: PreferenceKey {
-    static var defaultValue: Anchor<CGRect>? = nil
+    static let defaultValue: Anchor<CGRect>? = nil
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
         value = value ?? nextValue()
     }

@@ -1,37 +1,127 @@
 import SwiftUI
 
-/// The countdown ring and time. It watches only `Countdown`, so each second
-/// redraws this view alone. The ring is a plain arc that steps once a second:
-/// on a 25-minute round each step is a fraction of a degree, so it reads as
-/// a smooth drain without any animation.
+// The pieces every timer surface is built from. The main window, the menu
+// bar popover and the mini timer use these same components, so a change to
+// how the time, the ring, the controls or the session picker look or behave
+// is made once.
+
+// MARK: - Time and progress
+
+/// The countdown digits. Only this redraws each second.
+struct CountdownText: View {
+    @ObservedObject var countdown: Countdown
+    let role: TextRole
+    let theme: AppTheme
+
+    var body: some View {
+        Text(Format.clock(TimeInterval(countdown.seconds)))
+            .textRole(role, theme)
+            .monospacedDigit()
+            .foregroundStyle(theme.text)
+    }
+}
+
+/// The phase name in tracked capitals, in the phase's accent.
+struct PhaseLabel: View {
+    let phase: Phase
+    let theme: AppTheme
+
+    var body: some View {
+        Label(phase.label.uppercased(), systemImage: phase.symbol)
+            .textRole(.label, theme)
+            .foregroundStyle(theme.colors(for: phase).text)
+    }
+}
+
+/// A ring that drains clockwise from 12 o'clock. With `track`, the used-up
+/// part is drawn thin and quiet; with `gapped`, the two ends stay apart.
+struct ProgressRing: View {
+    let fraction: Double
+    let colors: MoodColors
+    let lineWidth: CGFloat
+    var track: Color? = nil
+    var gapped = false
+    var glows = false
+    /// Room inside the frame, so a glow isn't clipped at its edge.
+    var margin: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { proxy in
+            let radius = min(proxy.size.width, proxy.size.height) / 2 - margin - lineWidth / 2
+            // Gap between the arc's end and the track, allowing for both round caps.
+            let gap = gapped ? Double((lineWidth + 8) / (2 * .pi * max(radius, 1))) : 0
+            let left = max(0, min(1, fraction))
+            ZStack {
+                if let track, left < 1 - gap * 2 {
+                    Circle()
+                        .inset(by: margin + lineWidth / 2)
+                        .trim(from: left + gap, to: 1 - gap)
+                        .stroke(track, style: StrokeStyle(lineWidth: gapped ? lineWidth * 0.4 : lineWidth, lineCap: .round))
+                }
+                Circle()
+                    .inset(by: margin + lineWidth / 2)
+                    .trim(from: 0, to: left)
+                    .stroke(gradient(left), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .shadow(color: glows ? colors.glow.opacity(0.5) : .clear, radius: 8)
+            }
+            .rotationEffect(.degrees(-90))
+        }
+        // Drawn on the GPU: CoreGraphics would otherwise work out the
+        // gradient pixel by pixel on the CPU every time it changes.
+        .drawingGroup()
+    }
+
+    private func gradient(_ left: Double) -> AngularGradient {
+        colors.ringIsGradient
+            ? AngularGradient(colors: colors.ring, center: .center)
+            : AngularGradient(colors: colors.ring, center: .center,
+                              startAngle: .degrees(0), endAngle: .degrees(360 * max(left, 0.01)))
+    }
+}
+
+/// A thin bar that drains left to right, for the popover.
+struct ProgressBar: View {
+    @ObservedObject var countdown: Countdown
+    let color: Color
+    let track: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(track)
+                Capsule().fill(color)
+                    .frame(width: max(4, proxy.size.width * countdown.fraction))
+            }
+        }
+        .frame(height: 4)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - The dial
+
+/// The main window's dial: the ring, the phase, the time, the rounds and
+/// what comes next; or, once a session is done, its summary.
 struct TimerDial: View {
+    @EnvironmentObject private var engine: TimerEngine
     @ObservedObject var countdown: Countdown
     let theme: AppTheme
-    let accent: Color
-    let ringColors: [Color]
-    let phase: Phase
-    let rounds: Int
-    let round: Int
-    let repeats: Bool
-    /// "Next: Break · 10 min" while a session is under way.
-    let next: String?
-    /// "4 rounds · 2h 40m focused" when the session is done.
-    let summary: String
-    /// Spoken by VoiceOver, e.g. "Round 2 of 4".
-    let roundText: String
 
     static let size: CGFloat = 260
     private let lineWidth: CGFloat = 10
-    /// Space between the ring and the dial's edge, so the glow isn't clipped.
+    /// Room between the ring and the dial's edge, so the glow isn't clipped.
     private let inset: CGFloat = 10
 
     var body: some View {
+        let colors = theme.colors(for: engine.displayPhase)
         ZStack {
-            if phase == .complete {
-                FinishRing(color: accent, lineWidth: lineWidth, inset: inset)
+            if engine.phase == .complete {
+                FinishRing(color: colors.shape, lineWidth: lineWidth)
+                    .padding(inset)
                 finished
             } else {
-                ring
+                ProgressRing(fraction: countdown.fraction, colors: colors, lineWidth: lineWidth,
+                             track: theme.track, gapped: true, glows: true, margin: inset)
                 running
             }
         }
@@ -41,92 +131,54 @@ struct TimerDial: View {
     }
 
     private var running: some View {
-        VStack(spacing: 10) {
-            Label(phase.label.uppercased(), systemImage: phase.symbol)
-                .font(.system(size: 12, weight: .semibold, design: theme.fontDesign))
-                .tracking(1.4)
-                .foregroundStyle(theme.accentText(for: phase == .idle ? .focus : phase))
-            Text(Format.clock(TimeInterval(countdown.seconds)))
-                .font(.system(size: 60, weight: .light, design: theme.fontDesign))
-                .monospacedDigit()
-                .foregroundStyle(theme.text)
-            // Dots only when there's more than one round to count.
-            if repeats || rounds > 1 {
-                RoundDots(theme: theme, accent: accent, total: rounds, current: round,
-                          repeats: repeats, done: false)
+        VStack(spacing: Space.s + Space.xxs) {
+            PhaseLabel(phase: engine.phase, theme: theme)
+            CountdownText(countdown: countdown, role: .dialTime, theme: theme)
+            if engine.showsRounds {
+                RoundDots(color: theme.colors(for: engine.displayPhase).shape, empty: theme.track,
+                          total: engine.plan.rounds, current: engine.round, repeats: engine.plan.repeatForever)
             }
-            if let next {
-                Text(next)
-                    .font(.system(size: 11.5, weight: .medium, design: theme.fontDesign))
+            if let next = engine.upNext {
+                Text("Next: \(next)")
+                    .textRole(.caption, theme)
                     .foregroundStyle(theme.secondary)
             }
         }
     }
 
     private var finished: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Space.s) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 30))
-                .foregroundStyle(theme.accentShape(for: .complete))
+                .foregroundStyle(theme.colors(for: .complete).shape)
             Text("Session complete")
-                .font(.system(size: 20, weight: .semibold, design: theme.fontDesign))
+                .textRole(.title, theme)
                 .foregroundStyle(theme.text)
-            Text(summary)
-                .font(.system(size: 12.5, design: theme.fontDesign))
+            Text(engine.sessionSummary)
+                .textRole(.caption, theme)
                 .foregroundStyle(theme.secondary)
         }
     }
 
     private var accessibilityText: String {
-        if phase == .complete { return "Session complete. \(summary)" }
+        if engine.phase == .complete { return "Session complete. \(engine.sessionSummary)" }
         let m = countdown.seconds / 60, s = countdown.seconds % 60
-        var parts = ["\(phase.label), \(m) minute\(m == 1 ? "" : "s") \(s) second\(s == 1 ? "" : "s") left"]
-        if rounds > 1 || repeats { parts.append(roundText) }
-        if let next { parts.append(next) }
+        var parts = ["\(engine.phase.label), \(m) minute\(m == 1 ? "" : "s") \(s) second\(s == 1 ? "" : "s") left"]
+        if engine.showsRounds { parts.append(engine.roundText) }
+        if let next = engine.upNext { parts.append("Next: \(next)") }
         return parts.joined(separator: ". ")
-    }
-
-    private var ring: some View {
-        let left = countdown.fraction
-        let radius = Self.size / 2 - inset - lineWidth / 2
-        // Gap between the arc's end and the track, allowing for both round caps.
-        let gap = Double((lineWidth + 8) / (2 * .pi * radius))
-        let gradient = ringColors.count > 2
-            ? AngularGradient(colors: ringColors, center: .center)
-            : AngularGradient(colors: ringColors, center: .center,
-                              startAngle: .degrees(0), endAngle: .degrees(360 * max(left, 0.01)))
-        return ZStack {
-            if left < 1 - gap * 2 {
-                Circle()
-                    .inset(by: inset + lineWidth / 2)
-                    .trim(from: left + gap, to: 1 - gap)
-                    .stroke(theme.text.opacity(theme.highContrast ? 0.3 : (theme.isDark ? 0.12 : 0.10)),
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round))
-            }
-            Circle()
-                .inset(by: inset + lineWidth / 2)
-                .trim(from: 0, to: left)
-                .stroke(gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .shadow(color: (ringColors.dropFirst().first ?? accent).opacity(0.5), radius: 8)
-        }
-        .rotationEffect(.degrees(-90))
-        // Draw on the GPU: CoreGraphics would otherwise work out the
-        // gradient pixel by pixel on the CPU every second.
-        .drawingGroup()
     }
 }
 
-/// The finished session's ring: sweeps closed once in the "done" colour,
-/// then stays still.
+/// A finished session's ring: sweeps closed once, then stays still.
 private struct FinishRing: View {
     let color: Color
     let lineWidth: CGFloat
-    let inset: CGFloat
     @State private var sweep: Double = 0
 
     var body: some View {
         Circle()
-            .inset(by: inset + lineWidth / 2)
+            .inset(by: lineWidth / 2)
             .trim(from: 0, to: sweep)
             .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             .shadow(color: color.opacity(0.5), radius: 8)
@@ -137,81 +189,140 @@ private struct FinishRing: View {
     }
 }
 
+/// One dot per round: filled when done, half-filled for the current one.
 struct RoundDots: View {
-    let theme: AppTheme
-    let accent: Color
+    let color: Color
+    let empty: Color
     let total: Int
     let current: Int
     let repeats: Bool
-    let done: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.s - 2) {
             if repeats {
                 Image(systemName: "infinity")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(accent)
+                    .foregroundStyle(color)
             } else {
                 ForEach(1...max(1, min(total, 12)), id: \.self) { i in
                     Circle()
-                        .fill(fill(for: i))
+                        .fill(i < current ? color : (i == current ? color.opacity(0.45) : empty))
                         .frame(width: 7, height: 7)
                 }
             }
         }
         .frame(height: 10)
     }
-
-    private func fill(for i: Int) -> Color {
-        if done || i < current { return accent }
-        if i == current { return accent.opacity(0.45) }
-        return theme.text.opacity(0.15)
-    }
 }
 
-/// A rounded glass card.
-struct Card<Content: View>: View {
+// MARK: - Controls
+
+/// Reset, Start/Pause, Skip: the same row, the same titles and the same
+/// layout on every surface. Reset and Skip are always laid out and only
+/// enabled while a session runs, so nothing shifts when it starts.
+struct TimerControls: View {
+    @EnvironmentObject private var engine: TimerEngine
     let theme: AppTheme
-    @ViewBuilder var content: Content
+    /// The main button stretches to fill the row (the popover).
+    var fillsWidth = false
+    /// Space starts and pauses (the main window).
+    var spaceStartsAndPauses = false
 
     var body: some View {
-        // Content starts at the top-left and the card fills whatever size it
-        // is given, so cards side by side line up edge to edge.
-        VStack(alignment: .leading, spacing: 8) { content }
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(theme.surface)
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(theme.stroke, lineWidth: 1))
-            )
+        HStack(spacing: Space.m) {
+            Button(action: engine.reset) { Image(systemName: "arrow.counterclockwise") }
+                .buttonStyle(CircleIconButtonStyle(theme: theme))
+                .help("Reset  ⌘R")
+                .accessibilityLabel("Reset")
+                .disabled(engine.isIdle)
+                .opacity(engine.isIdle ? 0.4 : 1)
+
+            Button(action: engine.toggle) {
+                Text(engine.primaryActionTitle)
+                    .frame(minWidth: 120, maxWidth: fillsWidth ? .infinity : nil)
+            }
+            .buttonStyle(AccentButtonStyle(theme: theme, fill: theme.colors(for: engine.displayPhase).button))
+            .modifier(SpaceShortcut(enabled: spaceStartsAndPauses))
+
+            Button(action: engine.skip) { Image(systemName: "forward.end") }
+                .buttonStyle(CircleIconButtonStyle(theme: theme))
+                .help("\(engine.skipTitle)  ⌘→")
+                .accessibilityLabel(engine.skipTitle)
+                .disabled(engine.isIdle)
+                .opacity(engine.isIdle ? 0.4 : 1)
+        }
     }
 }
 
-struct CardHeading: View {
+private struct SpaceShortcut: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled { content.keyboardShortcut(.space, modifiers: []) } else { content }
+    }
+}
+
+/// The session picker: a pill with the session's icon and name. Disabled
+/// while a session runs.
+struct SessionMenu: View {
+    @EnvironmentObject private var engine: TimerEngine
+    @EnvironmentObject private var store: PresetStore
     let theme: AppTheme
-    let text: String
+    /// Stretch to fill the row, with the chevron at the far end.
+    var fillsWidth = false
+    /// Adds "Edit Sessions…" at the bottom of the menu.
+    var editSessions: (() -> Void)? = nil
 
     var body: some View {
-        Text(text.uppercased())
-            .font(.system(size: 10.5, weight: .semibold, design: theme.fontDesign))
-            .tracking(1.4)
-            .foregroundStyle(theme.secondary)
+        let plan = engine.plan
+        Menu {
+            ForEach(store.presets) { preset in
+                Button {
+                    store.selectedID = preset.id
+                    engine.load(preset)
+                } label: {
+                    Label(preset.name, systemImage: preset.id == store.selectedID ? "checkmark" : preset.symbol)
+                }
+            }
+            if let editSessions {
+                Divider()
+                Button("Edit Sessions…", action: editSessions)
+            }
+        } label: {
+            PillLabel(theme: theme) {
+                Image(systemName: plan.symbol)
+                Text(engine.isCustomized ? "\(plan.name) (edited)" : plan.name)
+                    .lineLimit(1)
+                if fillsWidth { Spacer(minLength: Space.xs) }
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .opacity(0.7)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .focusEffectDisabled()
+        .fixedSize(horizontal: !fillsWidth, vertical: true)
+        .disabled(!engine.isIdle)
+        .help(engine.isIdle ? "" : "Reset the timer to change the session")
+        .accessibilityLabel("Session: \(plan.name)")
     }
 }
 
-/// The main "Start Timer" capsule.
+// MARK: - Button styles
+
+/// The Start/Pause capsule, in the phase's contrast-checked colours.
 struct AccentButtonStyle: ButtonStyle {
     let theme: AppTheme
-    /// Colours and a label colour checked for contrast; see `AppTheme.buttonFill`.
     let fill: ButtonFill
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .semibold, design: theme.fontDesign))
+            .textRole(.headline, theme)
             .foregroundStyle(fill.label)
-            .padding(.horizontal, 30)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Space.xxl)
+            .padding(.vertical, Space.m)
             .background(
                 Capsule().fill(LinearGradient(colors: fill.stops,
                                               startPoint: fill.stops.count > 2 ? .leading : .top,
@@ -222,7 +333,7 @@ struct AccentButtonStyle: ButtonStyle {
     }
 }
 
-/// Small round icon buttons beside the main one (reset, skip).
+/// The round Reset and Skip buttons.
 struct CircleIconButtonStyle: ButtonStyle {
     let theme: AppTheme
 
@@ -231,29 +342,47 @@ struct CircleIconButtonStyle: ButtonStyle {
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(theme.text.opacity(0.85))
             .frame(width: 40, height: 40)
-            .background(Circle().fill(theme.surface).overlay(Circle().stroke(theme.stroke)))
+            .background(Circle().fill(configuration.isPressed ? theme.surfaceHover : theme.surface)
+                .overlay(Circle().stroke(theme.stroke)))
             .scaleEffect(configuration.isPressed ? 0.94 : 1)
     }
 }
 
-/// The quiet text buttons along the bottom of the window.
-struct FooterButtonStyle: ButtonStyle {
-    static let horizontalPadding: CGFloat = 12
+/// Quiet buttons that only show a fill on hover: icon buttons along the
+/// window's edges (capsule), and the popover's rows (row).
+struct QuietButtonStyle: ButtonStyle {
+    enum Shape { case capsule, row }
+
+    static let horizontalPadding: CGFloat = Space.m
+
     let theme: AppTheme
+    var shape: Shape = .capsule
     @State private var hovering = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12.5, weight: .medium, design: theme.fontDesign))
-            .foregroundStyle(theme.text.opacity(hovering ? 1 : 0.72))
-            .padding(.horizontal, Self.horizontalPadding)
-            .padding(.vertical, 7)
-            .background(Capsule().fill(hovering || configuration.isPressed ? theme.surface : .clear))
+        let lit = hovering || configuration.isPressed
+        let label = configuration.label
+            .textRole(shape == .row ? .body : .control, theme)
+            .foregroundStyle(shape == .row ? theme.text : theme.text.opacity(lit ? 1 : 0.72))
             .onHover { hovering = $0 }
+        switch shape {
+        case .capsule:
+            label
+                .padding(.horizontal, Self.horizontalPadding)
+                .padding(.vertical, Space.s - 1)
+                .background(Capsule().fill(lit ? theme.surface : .clear))
+        case .row:
+            label
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, Space.xs + 1)
+                .padding(.horizontal, Space.s - 2)
+                .contentShape(Rectangle())
+                .background(RoundedRectangle(cornerRadius: Radius.small).fill(lit ? theme.surface : .clear))
+        }
     }
 }
 
-/// A rounded, quiet button for the session and timing under the dial.
+/// A rounded, quiet pill: the session picker and the timing button.
 struct PillLabel<Content: View>: View {
     let theme: AppTheme
     @ViewBuilder var content: Content
@@ -261,13 +390,13 @@ struct PillLabel<Content: View>: View {
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        HStack(spacing: 6) { content }
-            .font(.system(size: 12.5, weight: .medium, design: theme.fontDesign))
+        HStack(spacing: Space.s - 2) { content }
+            .textRole(.control, theme)
             .foregroundStyle(theme.text.opacity(isEnabled ? 0.92 : 0.6))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            .padding(.horizontal, Space.m)
+            .padding(.vertical, Space.s - 1)
             .background(
-                Capsule().fill(hovering && isEnabled ? theme.surface.opacity(2) : theme.surface)
+                Capsule().fill(hovering && isEnabled ? theme.surfaceHover : theme.surface)
                     .overlay(Capsule().stroke(theme.stroke))
             )
             .contentShape(Capsule())

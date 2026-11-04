@@ -57,7 +57,7 @@ struct PresetsEditorView: View {
                             if preset.id == store.selectedID {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(theme.focus)
+                                    .foregroundStyle(theme.colors(for: .focus).shape)
                             }
                         }
                         .tag(preset.id)

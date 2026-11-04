@@ -150,7 +150,7 @@ extension Notifier: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         let isTest = notification.request.content.userInfo[Self.testKey] as? Bool ?? false
-        let onlyInBackground = UserDefaults.standard.bool(forKey: AppSettings.Key.notifyOnlyInBackground)
+        let onlyInBackground = AppSettings.saved(AppSettings.Key.notifyOnlyInBackground, false)
         let active = await MainActor.run { NSApp.isActive }
         if onlyInBackground && active && !isTest { return [] }
         return [.banner, .list, .sound]

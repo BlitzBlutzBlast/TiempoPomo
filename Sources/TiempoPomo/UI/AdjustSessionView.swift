@@ -15,7 +15,7 @@ struct AdjustSessionView: View {
         let theme = settings.theme
         VStack(alignment: .leading, spacing: 14) {
             Text("Change session time")
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: 15, weight: .semibold))
             Text("Applies to the next run of \(store.selected.name).")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -47,7 +47,7 @@ struct AdjustSessionView: View {
         }
         .padding(18)
         .frame(width: 330)
-        .tint(theme.focus)
+        .tint(theme.colors(for: .focus).shape)
         .onAppear {
             guard !loaded else { return }
             draft = engine.plan

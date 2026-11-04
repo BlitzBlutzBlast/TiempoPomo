@@ -22,6 +22,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test
+        run: swift test --disable-xctest
+
       # build.sh runs scripts/check_no_network.sh before compiling and again on
       # the signed app, so a build that could reach the network never ships.
       - name: Build app, DMG and PKG (Apple silicon + Intel)
