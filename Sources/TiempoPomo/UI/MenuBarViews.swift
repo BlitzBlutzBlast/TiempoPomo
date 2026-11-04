@@ -118,7 +118,7 @@ struct MenuBarPanel: View {
             // The glass fills the whole popover window, edge to edge, so none
             // of the system's own window background shows above or below.
             .background {
-                GlassBackground(theme: theme, breakTint: engine.phase.isBreak ? theme.rest : nil)
+                GlassBackground(theme: Self.popoverGlass(theme), breakTint: engine.phase.isBreak ? theme.rest : nil)
                     .ignoresSafeArea()
             }
             .background(CountdownVisibility(countdown: engine.countdown))
@@ -130,6 +130,16 @@ struct MenuBarPanel: View {
 
     /// A row that goes somewhere: it closes the popover first, so the window
     /// it opens isn't left covered.
+    /// The popover floats over whatever is behind it and is mostly small
+    /// text, so its glass is never thinner than this, whatever the palette.
+    /// Otherwise a bright wallpaper shows through a light tint (Ocean's is
+    /// 45%) and washes the text out.
+    static func popoverGlass(_ theme: AppTheme) -> AppTheme {
+        var glass = theme
+        glass.tintOpacity = max(theme.tintOpacity, 0.72)
+        return glass
+    }
+
     private func panelLink(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
         Button {
             panelWindow?.orderOut(nil)
