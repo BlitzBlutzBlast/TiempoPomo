@@ -128,7 +128,6 @@ struct RGB: Equatable {
 struct ButtonFill {
     var stops: [Color]
     var label: Color
-    var glow: Color
 }
 
 extension AppTheme {
@@ -202,7 +201,7 @@ extension AppTheme {
             t += 0.03
             stops = original.map { $0.mixed(with: toward, t) }
         }
-        return ButtonFill(stops: stops.map(\.color), label: label.color, glow: accent.color)
+        return ButtonFill(stops: stops.map(\.color), label: label.color)
     }
 }
 

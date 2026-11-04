@@ -32,6 +32,28 @@ struct MenuBarPanel: View {
     var body: some View {
         Themed(settings.theme) { theme in
             let accent = theme.accent(for: engine.displayPhase)
+            // The structure is fixed: one frame, the palette's glass as its
+            // bottom layer filling every edge, the content on top. The
+            // palette only paints; it never changes the popover's shape.
+            ZStack(alignment: .top) {
+                GlassBackground(theme: Self.popoverGlass(theme), breakTint: engine.phase.isBreak ? theme.rest : nil)
+                    .ignoresSafeArea()
+                content(theme: theme, accent: accent)
+                    .padding(16)
+            }
+            .frame(width: Self.width)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(CountdownVisibility(countdown: engine.countdown))
+            .background(PanelWindowReader(window: $panelWindow, isDark: theme.isDark))
+            .preferredColorScheme(theme.colorScheme)
+            .tint(accent)
+        }
+    }
+
+    static let width: CGFloat = 280
+
+    @ViewBuilder
+    private func content(theme: AppTheme, accent: Color) -> some View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
                     Label(engine.phase == .idle ? "Ready" : engine.phase.label, systemImage: engine.phase.symbol)
@@ -53,7 +75,9 @@ struct MenuBarPanel: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(AccentButtonStyle(theme: theme, fill: theme.buttonFill(for: engine.displayPhase)))
-                    if !engine.isIdle {
+                    // Always laid out, only enabled while a session runs, so
+                    // the popover keeps one shape in every state.
+                    Group {
                         Button(action: engine.reset) { Image(systemName: "arrow.counterclockwise") }
                             .buttonStyle(CircleIconButtonStyle(theme: theme))
                             .accessibilityLabel("Reset")
@@ -61,12 +85,14 @@ struct MenuBarPanel: View {
                             .buttonStyle(CircleIconButtonStyle(theme: theme))
                             .accessibilityLabel(engine.phase.isBreak ? "Skip break" : "Skip to break")
                     }
+                    .disabled(engine.isIdle)
+                    .opacity(engine.isIdle ? 0.4 : 1)
                 }
 
-                if engine.isIdle {
-                    // The palette's own pill rather than a system pop-up, which
-                    // takes on the accent and can lose contrast on dark palettes.
-                    Menu {
+                // Same here: always present, disabled while a session runs.
+                // The palette's own pill rather than a system pop-up, which
+                // takes on the accent and can lose contrast on dark palettes.
+                Menu {
                         ForEach(store.presets) { preset in
                             Button {
                                 store.selectedID = preset.id
@@ -89,8 +115,9 @@ struct MenuBarPanel: View {
                     .buttonStyle(.plain)
                     .menuIndicator(.hidden)
                     .focusEffectDisabled()
-                    .accessibilityLabel("Session: \(engine.plan.name)")
-                }
+                .accessibilityLabel("Session: \(engine.plan.name)")
+                .disabled(!engine.isIdle)
+                .help(engine.isIdle ? "" : "Reset the timer to change the session")
 
                 Divider()
 
@@ -113,23 +140,8 @@ struct MenuBarPanel: View {
                 .font(.system(size: 13, design: theme.fontDesign))
                 .foregroundStyle(theme.text)
             }
-            .padding(16)
-            .frame(width: 280)
-            // The glass fills the whole popover window, edge to edge, so none
-            // of the system's own window background shows above or below.
-            .background {
-                GlassBackground(theme: Self.popoverGlass(theme), breakTint: engine.phase.isBreak ? theme.rest : nil)
-                    .ignoresSafeArea()
-            }
-            .background(CountdownVisibility(countdown: engine.countdown))
-            .background(PanelWindowReader(window: $panelWindow, isDark: theme.isDark))
-            .preferredColorScheme(theme.colorScheme)
-            .tint(accent)
-        }
     }
 
-    /// A row that goes somewhere: it closes the popover first, so the window
-    /// it opens isn't left covered.
     /// The popover floats over whatever is behind it and is mostly small
     /// text, so its glass is never thinner than this, whatever the palette.
     /// Otherwise a bright wallpaper shows through a light tint (Ocean's is
@@ -140,6 +152,8 @@ struct MenuBarPanel: View {
         return glass
     }
 
+    /// A row that goes somewhere: it closes the popover first, so the window
+    /// it opens isn't left covered.
     private func panelLink(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
         Button {
             panelWindow?.orderOut(nil)

@@ -217,7 +217,6 @@ struct AccentButtonStyle: ButtonStyle {
                                               startPoint: fill.stops.count > 2 ? .leading : .top,
                                               endPoint: fill.stops.count > 2 ? .trailing : .bottom))
             )
-            .shadow(color: fill.glow.opacity(configuration.isPressed ? 0.2 : 0.45), radius: 12, y: 4)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
