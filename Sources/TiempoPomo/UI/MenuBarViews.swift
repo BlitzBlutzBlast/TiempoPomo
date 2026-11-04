@@ -32,14 +32,19 @@ struct MenuBarPanel: View {
     /// The popover's own window, so picking a destination can close it.
     @State private var panelWindow: NSWindow?
 
-    static let width: CGFloat = 280
+    static let width: CGFloat = 288
+    /// Space between the popover's edge and everything in it.
+    static let inset: CGFloat = Space.xl
 
     var body: some View {
         Themed(settings.palette) { theme in
             ZStack(alignment: .top) {
                 GlassBackground(theme: theme, surface: .floating, phase: engine.phase)
                 content(theme: theme)
-                    .padding(Space.l)
+                    .frame(width: Self.width - 2 * Self.inset)
+                    .padding(.horizontal, Self.inset)
+                    .padding(.top, Self.inset)
+                    .padding(.bottom, Space.m)
             }
             .frame(width: Self.width)
             .frame(maxHeight: .infinity, alignment: .top)
@@ -76,7 +81,9 @@ struct MenuBarPanel: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: Space.xxs) {
+            // Rows reach slightly past the content edge so their text lines up
+            // with it while the hover fill keeps a margin of its own.
+            VStack(alignment: .leading, spacing: 0) {
                 row("Open Tiempo Pomo", "macwindow") {
                     openWindow(id: "main")
                     NSApp.activate(ignoringOtherApps: true)
@@ -89,6 +96,7 @@ struct MenuBarPanel: View {
                 row("Settings…", "gearshape") { open(.general) }
                 row("Quit Tiempo Pomo", "power") { NSApp.terminate(nil) }
             }
+            .padding(.horizontal, -QuietButtonStyle.rowPadding)
         }
     }
 
@@ -106,7 +114,14 @@ struct MenuBarPanel: View {
     }
 
     private func row(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button { go(action) } label: { Label(title, systemImage: symbol) }
+        Button { go(action) } label: {
+            // A fixed icon column, so every title starts at the same place.
+            HStack(spacing: Space.s) {
+                Image(systemName: symbol).frame(width: 18)
+                Text(title)
+            }
+        }
+        .accessibilityLabel(title)
             .buttonStyle(QuietButtonStyle(theme: settings.theme, shape: .row))
     }
 }

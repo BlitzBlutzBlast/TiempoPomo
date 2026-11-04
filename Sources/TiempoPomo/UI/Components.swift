@@ -229,7 +229,7 @@ struct TimerControls: View {
     var spaceStartsAndPauses = false
 
     var body: some View {
-        HStack(spacing: Space.m) {
+        HStack(spacing: fillsWidth ? Space.s + Space.xxs : Space.m) {
             Button(action: engine.reset) { Image(systemName: "arrow.counterclockwise") }
                 .buttonStyle(CircleIconButtonStyle(theme: theme))
                 .help("Reset  ⌘R")
@@ -239,9 +239,14 @@ struct TimerControls: View {
 
             Button(action: engine.toggle) {
                 Text(engine.primaryActionTitle)
-                    .frame(minWidth: 120, maxWidth: fillsWidth ? .infinity : nil)
+                    .lineLimit(1)
+                    // The popover's row is narrow: the button takes what's left
+                    // between the round buttons rather than a fixed minimum.
+                    .frame(minWidth: fillsWidth ? 0 : 120, maxWidth: fillsWidth ? .infinity : nil)
             }
-            .buttonStyle(AccentButtonStyle(theme: theme, fill: theme.colors(for: engine.displayPhase).button))
+            .buttonStyle(AccentButtonStyle(theme: theme, fill: theme.colors(for: engine.displayPhase).button,
+                                           horizontalPadding: fillsWidth ? Space.l : Space.xxl))
+            .focusEffectDisabled()
             .modifier(SpaceShortcut(enabled: spaceStartsAndPauses))
 
             Button(action: engine.skip) { Image(systemName: "forward.end") }
@@ -316,12 +321,13 @@ struct SessionMenu: View {
 struct AccentButtonStyle: ButtonStyle {
     let theme: AppTheme
     let fill: ButtonFill
+    var horizontalPadding: CGFloat = Space.xxl
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .textRole(.headline, theme)
             .foregroundStyle(fill.label)
-            .padding(.horizontal, Space.xxl)
+            .padding(.horizontal, horizontalPadding)
             .padding(.vertical, Space.m)
             .background(
                 Capsule().fill(LinearGradient(colors: fill.stops,
@@ -354,6 +360,7 @@ struct QuietButtonStyle: ButtonStyle {
     enum Shape { case capsule, row }
 
     static let horizontalPadding: CGFloat = Space.m
+    static let rowPadding: CGFloat = Space.s + Space.xxs
 
     let theme: AppTheme
     var shape: Shape = .capsule
@@ -374,8 +381,8 @@ struct QuietButtonStyle: ButtonStyle {
         case .row:
             label
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, Space.xs + 1)
-                .padding(.horizontal, Space.s - 2)
+                .padding(.vertical, Space.s - 1)
+                .padding(.horizontal, Self.rowPadding)
                 .contentShape(Rectangle())
                 .background(RoundedRectangle(cornerRadius: Radius.small).fill(lit ? theme.surface : .clear))
         }
