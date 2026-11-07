@@ -51,7 +51,10 @@ struct MenuBarPanel: View {
             .background(WindowBridge(
                 style: .init(isDark: theme.isDark, chrome: .system, background: .clear),
                 countdown: engine.countdown,
-                onWindow: { panelWindow = $0 }))
+                onWindow: { window in
+                    panelWindow = window
+                    AppDelegate.menuPanel = window
+                }))
             .preferredColorScheme(theme.colorScheme)
             .tint(theme.colors(for: engine.displayPhase).shape)
         }

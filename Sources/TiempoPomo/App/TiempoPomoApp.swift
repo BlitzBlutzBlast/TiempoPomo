@@ -80,7 +80,10 @@ struct TiempoPomoApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor static weak var engine: TimerEngine?
+    /// The menu bar popover's window while it exists.
+    @MainActor static weak var menuPanel: NSWindow?
     private var keyMonitor: Any?
+    private var clickMonitor: Any?
     private var windowObservers: [NSObjectProtocol] = []
 
     /// ⌘↩ start/pause, ⌘→ skip, ⌘R reset. Done with a key monitor rather
@@ -106,6 +109,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // With more than one display, every menu bar shows the icon. If the
+        // popover is open on one screen, a click on the icon on another would
+        // only close it, which looks like the icon doing nothing. Move it to
+        // the screen that was clicked instead.
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            MainActor.assumeIsolated { AppDelegate.reopenMenuPanelIfOnOtherScreen(after: event) }
+            return event
+        }
+
         // Follow the windows to decide whether Tiempo Pomo belongs in the Dock.
         let center = NotificationCenter.default
         windowObservers.append(center.addObserver(forName: NSWindow.willCloseNotification,
@@ -118,6 +130,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                   object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { AppDelegate.updateDockIcon() }
         })
+    }
+
+    /// A click on the menu bar icon on another screen from the open popover
+    /// closes it (SwiftUI's menu bar item toggles). Once it has, click that
+    /// screen's icon again so the popover opens where you clicked.
+    @MainActor private static func reopenMenuPanelIfOnOtherScreen(after event: NSEvent) {
+        guard let bar = event.window,
+              String(describing: type(of: bar)).contains("StatusBarWindow"),
+              let panel = menuPanel, panel.isVisible,
+              let target = bar.screen, let current = panel.screen,
+              displayID(target) != displayID(current),
+              let button = statusButton(in: bar.contentView) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            MainActor.assumeIsolated {
+                if menuPanel?.isVisible != true { button.performClick(nil) }
+            }
+        }
+    }
+
+    @MainActor private static func statusButton(in view: NSView?) -> NSButton? {
+        guard let view else { return nil }
+        if let button = view as? NSButton { return button }
+        for sub in view.subviews { if let found = statusButton(in: sub) { return found } }
+        return nil
+    }
+
+    @MainActor private static func displayID(_ screen: NSScreen) -> NSNumber? {
+        screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
     }
 
     /// The app's own windows: the main window and Settings. Not the mini
