@@ -50,7 +50,7 @@ Tiempo Pomo never goes online. That's enforced, not just promised:
 
 ```bash
 ./build.sh 0.1.0          # → dist/Tiempo Pomo.app, TiempoPomo-0.1.0.dmg and TiempoPomo-0.1.0.pkg
-swift test --disable-xctest   # the session schedule, saved-session loading, formatting, and every palette's contrast
+swift test --disable-xctest   # (release.sh adds the flags the Command Line Tools need) the session schedule, saved-session loading, formatting, and every palette's contrast
 ./release.sh 0.1.0        # test, build, tag, push and publish this Mac's build; CI then swaps in the universal one
 ```
 

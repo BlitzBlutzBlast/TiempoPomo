@@ -27,7 +27,15 @@ if ! xcode-select -p | grep -q "Xcode" && [[ -z "${SDKROOT:-}" ]] && [[ -d /Libr
 fi
 
 echo "==> Testing"
-swift test --disable-xctest   # Swift Testing only; the Command Line Tools have no XCTest
+# Swift Testing only (the Command Line Tools have no XCTest), in its own build
+# folder. Without Xcode the compiler sometimes misses Swift Testing's macro
+# plugin, so point it there.
+TEST_ARGS=(--disable-xctest --scratch-path .build/tests)
+PLUGINS=/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+if ! xcode-select -p | grep -q "Xcode" && [[ -d "$PLUGINS" ]]; then
+  TEST_ARGS+=(-Xswiftc -plugin-path -Xswiftc "$PLUGINS")
+fi
+swift test "${TEST_ARGS[@]}"
 
 ./build.sh "$VERSION"
 (cd dist && shasum -a 256 "TiempoPomo-$VERSION.dmg" "TiempoPomo-$VERSION.pkg" > SHA256SUMS.txt)
